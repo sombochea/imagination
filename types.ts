@@ -37,6 +37,7 @@ export interface OverlayElement {
     y: number; // % relative to canvas height
     width?: number; // %
     height?: number; // %
+    visible?: boolean; // New: Toggle visibility
     style?: {
         color?: string;
         fontSize?: number;

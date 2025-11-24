@@ -4,7 +4,7 @@ import { generateStorySegments, generateProImage, generateSpeech, generateVideo 
 import { saveStoryToDB, getStoriesFromDB, deleteStoryFromDB, exportStoryToJson, importStoryFromJson, saveDraft, getDraft } from '../services/storage';
 import { StorySegment, ImageSize, AspectRatio, Language, SavedStory, TextAnimation, Character, SceneTransition, VideoConfig, PresentationConfig } from '../types';
 import { Button } from './Button';
-import { BookOpen, Image as ImageIcon, Sparkles, RefreshCw, PlayCircle, Save, FolderOpen, Trash2, X, Clock, Volume2, Mic, Music, Upload, Video, Plus, Download, FileUp, Settings2, CheckCircle2, UserPlus, Users, GripVertical, LayoutTemplate, Camera, Film, ArrowLeft, ArrowRight, Wand2, Calendar, MoreVertical, Edit3, Speech, UserCog, Cloud, CloudOff, Scissors, Sliders, FileText, ChevronDown, Play, Type, Gauge, MoreHorizontal, FileBox, Disc, MonitorPlay } from 'lucide-react';
+import { BookOpen, Image as ImageIcon, Sparkles, RefreshCw, PlayCircle, Save, FolderOpen, Trash2, X, Clock, Volume2, Mic, Music, Upload, Video, Plus, Download, FileUp, Settings2, CheckCircle2, UserPlus, Users, GripVertical, LayoutTemplate, Camera, Film, ArrowLeft, ArrowRight, Wand2, Calendar, MoreVertical, Edit3, Speech, UserCog, Cloud, CloudOff, Scissors, Sliders, FileText, ChevronDown, Play, Type, Gauge, MoreHorizontal, FileBox, Disc, MonitorPlay, Zap, Move } from 'lucide-react';
 import { Slideshow } from './Slideshow';
 import { VideoStudio } from './VideoStudio';
 
@@ -1363,6 +1363,29 @@ export const StoryMode: React.FC = () => {
                     <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-gray-500 border border-gray-100 shadow-sm uppercase tracking-wider">
                         Scene {index + 1}
                     </div>
+                    {/* Scene Transition Selector - Moved to Media Side */}
+                    <Dropdown
+                        trigger={
+                            <button className="flex items-center gap-1 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-md text-[10px] font-bold text-gray-500 border border-gray-100 shadow-sm hover:text-brand-600 hover:border-brand-200 transition-colors uppercase tracking-wider" title="Scene Entry Animation">
+                                <Zap className="w-3 h-3" /> {segment.transition || 'Fade'}
+                            </button>
+                        }
+                    >
+                        <div className="p-2 w-32">
+                            <div className="text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">Entry Transition</div>
+                            <div className="space-y-1">
+                                {TRANSITION_OPTIONS.map(opt => (
+                                    <button 
+                                        key={opt.value} 
+                                        onClick={() => handleUpdateSegment(segment.id, 'transition', opt.value)} 
+                                        className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors ${segment.transition === opt.value ? 'bg-indigo-50 text-indigo-700 font-bold' : 'hover:bg-gray-50 text-gray-600'}`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </Dropdown>
                 </div>
                 <div className="absolute top-3 right-3 z-20">
                      <Dropdown 
@@ -1497,33 +1520,23 @@ export const StoryMode: React.FC = () => {
                     <Dropdown
                         trigger={
                             <button className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold text-gray-500 hover:bg-gray-100 transition-colors">
-                                <Sliders className="w-3 h-3" /> Options
+                                <Sliders className="w-3 h-3" /> Text Anim
                             </button>
                         }
                         align="right"
                     >
-                        <div className="p-2 space-y-3 w-48">
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Transition</label>
-                                <div className="grid grid-cols-3 gap-1">
-                                    {TRANSITION_OPTIONS.map(opt => (
-                                        <button key={opt.value} onClick={() => handleUpdateSegment(segment.id, 'transition', opt.value)} className={`text-[10px] px-1 py-1 rounded border ${segment.transition === opt.value ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'border-transparent hover:bg-gray-50 text-gray-600'}`}>{opt.label}</button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold text-gray-400 uppercase block mb-1">Text Anim</label>
-                                <div className="grid grid-cols-2 gap-1">
-                                    {ANIMATION_OPTIONS.map(o => (
-                                        <button 
-                                            key={o.value} 
-                                            onClick={() => handleUpdateSegment(segment.id, 'animation', o.value)}
-                                            className={`text-[10px] px-2 py-1.5 rounded border text-left transition-colors ${segment.animation === o.value ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold' : 'border-transparent hover:bg-gray-50 text-gray-600'}`}
-                                        >
-                                            {o.label}
-                                        </button>
-                                    ))}
-                                </div>
+                        <div className="p-2 w-48">
+                            <div className="text-[10px] font-bold text-gray-400 uppercase block mb-2">Text Appearance</div>
+                            <div className="grid grid-cols-2 gap-1">
+                                {ANIMATION_OPTIONS.map(o => (
+                                    <button 
+                                        key={o.value} 
+                                        onClick={() => handleUpdateSegment(segment.id, 'animation', o.value)}
+                                        className={`text-[10px] px-2 py-1.5 rounded border text-left transition-colors ${segment.animation === o.value ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold' : 'border-transparent hover:bg-gray-50 text-gray-600'}`}
+                                    >
+                                        {o.label}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     </Dropdown>
