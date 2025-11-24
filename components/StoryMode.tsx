@@ -1,10 +1,12 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { generateStorySegments, generateProImage, generateSpeech, generateVideo } from '../services/gemini';
 import { saveStoryToDB, getStoriesFromDB, deleteStoryFromDB, exportStoryToJson, importStoryFromJson, saveDraft, getDraft } from '../services/storage';
 import { StorySegment, ImageSize, AspectRatio, Language, SavedStory, TextAnimation, Character, SceneTransition, VideoConfig, PresentationConfig } from '../types';
 import { Button } from './Button';
-import { BookOpen, Image as ImageIcon, Sparkles, RefreshCw, PlayCircle, Save, FolderOpen, Trash2, X, Clock, Volume2, Mic, Music, Upload, Video, Plus, Download, FileUp, Settings2, CheckCircle2, UserPlus, Users, GripVertical, LayoutTemplate, Camera, Film, ArrowLeft, ArrowRight, Wand2, Calendar, MoreVertical, Edit3, Speech, UserCog, Cloud, CloudOff, Scissors, Sliders, FileText, ChevronDown, Play, Type, Gauge, MoreHorizontal, FileBox, Disc } from 'lucide-react';
+import { BookOpen, Image as ImageIcon, Sparkles, RefreshCw, PlayCircle, Save, FolderOpen, Trash2, X, Clock, Volume2, Mic, Music, Upload, Video, Plus, Download, FileUp, Settings2, CheckCircle2, UserPlus, Users, GripVertical, LayoutTemplate, Camera, Film, ArrowLeft, ArrowRight, Wand2, Calendar, MoreVertical, Edit3, Speech, UserCog, Cloud, CloudOff, Scissors, Sliders, FileText, ChevronDown, Play, Type, Gauge, MoreHorizontal, FileBox, Disc, MonitorPlay } from 'lucide-react';
 import { Slideshow } from './Slideshow';
+import { VideoStudio } from './VideoStudio';
 
 // Use public domain or creative commons safe URLs for demo
 const SAMPLE_TRACKS = [
@@ -292,6 +294,7 @@ export const StoryMode: React.FC = () => {
   
   // Video Editor State
   const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
+  const [showVideoStudio, setShowVideoStudio] = useState(false);
   
   // Presentation & Export
   const [showSlideshow, setShowSlideshow] = useState(false);
@@ -558,21 +561,6 @@ export const StoryMode: React.FC = () => {
           };
           reader.readAsDataURL(file);
       }
-  };
-
-  const handleRemoveImage = (segmentId: string, imageIndex: number) => {
-      setSegments(prev => prev.map(s => {
-          if (s.id === segmentId && s.imageUrls) {
-              const newImages = [...s.imageUrls];
-              newImages.splice(imageIndex, 1);
-              let newPreviewIndex = s.previewIndex || 0;
-              if (newPreviewIndex >= newImages.length) {
-                  newPreviewIndex = Math.max(0, newImages.length - 1);
-              }
-              return { ...s, imageUrls: newImages, previewIndex: newPreviewIndex };
-          }
-          return s;
-      }));
   };
 
   const handleNextImage = (segmentId: string) => {
@@ -874,7 +862,7 @@ export const StoryMode: React.FC = () => {
                     placeholder="Name" 
                     value={newCharName} 
                     onChange={(e) => setNewCharName(e.target.value)}
-                    className="!py-1.5 !text-xs"
+                    className="py-2.5 text-xs"
                   />
               </div>
               <div className="md:col-span-5">
@@ -882,7 +870,7 @@ export const StoryMode: React.FC = () => {
                     placeholder="Description (e.g. Blue Robot)" 
                     value={newCharDesc} 
                     onChange={(e) => setNewCharDesc(e.target.value)}
-                    className="!py-1.5 !text-xs"
+                    className="py-2.5 text-xs"
                   />
               </div>
               <div className="md:col-span-3">
@@ -1115,6 +1103,18 @@ export const StoryMode: React.FC = () => {
           characters={characters}
         />
       )}
+
+      {showVideoStudio && (
+          <VideoStudio 
+              segments={segments}
+              onUpdateSegment={(id, field, val) => handleUpdateSegment(id, field, val)}
+              onClose={() => setShowVideoStudio(false)}
+              onExport={() => {
+                  setShowVideoStudio(false);
+                  startExport();
+              }}
+          />
+      )}
       
       {/* Presentation Settings Modal */}
       {showPresentationSettings && (
@@ -1303,6 +1303,9 @@ export const StoryMode: React.FC = () => {
 
         <div className="flex items-center gap-2">
             {/* Studio Tools */}
+            <Button variant="icon" onClick={() => setShowVideoStudio(true)} className="text-gray-500 hover:text-brand-600 hover:bg-brand-50" title="Open Video Studio">
+                <MonitorPlay className="w-5 h-5" />
+            </Button>
             <Button variant="icon" onClick={() => setShowCharacterModal(true)} className={characters.length > 0 ? 'text-brand-600 bg-brand-50' : ''} title="Characters">
                 <Users className="w-5 h-5" />
             </Button>

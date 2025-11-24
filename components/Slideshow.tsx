@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { StorySegment, PresentationConfig, Character } from '../types';
+import { StorySegment, PresentationConfig, Character, VisualTransform } from '../types';
 import { Button } from './Button';
 import { X, ChevronRight, ChevronLeft, Play, Pause, Volume2, VolumeX, Video, Download, Settings, Film } from 'lucide-react';
 
@@ -149,12 +149,16 @@ export const Slideshow: React.FC<SlideshowProps> = ({
     }
     // Also handle video element
     if (videoRef.current) {
+        const segment = segments[currentIndex];
         if (isPlaying && !isMuted) {
-            videoRef.current.muted = false; // Unmute if app is not muted
-            // Respect Trim Start
-            const segment = segments[currentIndex];
+            videoRef.current.muted = false; 
             if (segment.videoConfig?.trimStart && videoRef.current.currentTime < segment.videoConfig.trimStart) {
                  videoRef.current.currentTime = segment.videoConfig.trimStart;
+            }
+            if (segment.videoConfig?.playbackRate) {
+                videoRef.current.playbackRate = segment.videoConfig.playbackRate;
+            } else {
+                videoRef.current.playbackRate = 1.0;
             }
             videoRef.current.play().catch(() => {});
         } else if (isPlaying && isMuted) {
@@ -232,23 +236,24 @@ export const Slideshow: React.FC<SlideshowProps> = ({
         // Sync: move to next slide when audio ends
         audio.onended = () => {
            if (isPlaying) {
-             // Small pause before next slide
              setTimeout(() => {
                  setCurrentIndex(prev => (prev + 1) % segments.length);
              }, 1000);
            }
         };
     } else if (isPlaying && !isExporting) {
-        // Fallback timer if no audio
+        // Fallback timer
         let duration = 8000;
         
-        // If video is present, loop it or respect duration
-        if (segment.videoUrl) {
-            // Respect Trim Duration
+        if (segment.customDuration) {
+            duration = segment.customDuration * 1000;
+        } else if (segment.videoUrl) {
+            // Respect Trim Duration & Playback Rate
             if (segment.videoConfig) {
                  const start = segment.videoConfig.trimStart || 0;
                  const end = segment.videoConfig.trimEnd || 5;
-                 duration = (end - start) * 1000 + 1000; // +1s buffer
+                 const speed = segment.videoConfig.playbackRate || 1;
+                 duration = ((end - start) / speed) * 1000 + 1000; 
             } else {
                  duration = 6000;
             }
@@ -297,8 +302,7 @@ export const Slideshow: React.FC<SlideshowProps> = ({
         const width = resolution === '1080p' ? 1920 : 1280;
         const height = resolution === '1080p' ? 1080 : 720;
         
-        // Bitrate calculation (bps)
-        let videoBits = 2500000; // 2.5 Mbps default
+        let videoBits = 2500000; 
         if (resolution === '1080p') {
             videoBits = quality === 'high' ? 8000000 : quality === 'balanced' ? 5000000 : 2500000;
         } else {
@@ -311,7 +315,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
         const ctx = canvas.getContext('2d', { alpha: false }); 
         if (!ctx) throw new Error("Could not get canvas context");
 
-        // Set black background initially
         ctx.fillStyle = "#000000";
         ctx.fillRect(0, 0, width, height);
 
@@ -322,7 +325,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
 
         const dest = actx.createMediaStreamDestination();
         
-        // Load BG Music if exists
         let bgSource: AudioBufferSourceNode | null = null;
         let bgGain: GainNode | null = null;
         
@@ -335,7 +337,7 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                 bgSource.buffer = audioBuffer;
                 bgSource.loop = true;
                 bgGain = actx.createGain();
-                bgGain.gain.value = 0.15; // Subtle background
+                bgGain.gain.value = 0.15;
                 bgSource.connect(bgGain);
                 bgGain.connect(dest);
                 bgSource.start(actx.currentTime);
@@ -347,12 +349,11 @@ export const Slideshow: React.FC<SlideshowProps> = ({
         // --- 2. Stream & Recorder Setup ---
         const frameInterval = 1000 / fps;
         
-        // Detect best MIME type for compatibility (QuickTime prefers MP4/H264)
         const mimeTypes = [
-            'video/mp4;codecs=avc1.42E01E,mp4a.40.2', // Safari / Best
+            'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
             'video/mp4',
-            'video/webm;codecs=vp9,opus',     // Chrome High Quality
-            'video/webm'                      // Standard Fallback
+            'video/webm;codecs=vp9,opus',
+            'video/webm'
         ];
         let selectedMimeType = 'video/webm';
         for (const t of mimeTypes) {
@@ -361,12 +362,9 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                 break;
             }
         }
-        console.log("Exporting using MIME:", selectedMimeType);
-
-        // Capture canvas stream
+        
         const canvasStream = canvas.captureStream(fps);
         
-        // Combine audio and video tracks
         const combinedTracks = [
             ...canvasStream.getVideoTracks(),
             ...dest.stream.getAudioTracks()
@@ -385,7 +383,7 @@ export const Slideshow: React.FC<SlideshowProps> = ({
 
         mediaRecorder.start();
 
-        // --- 3. Asset Loader (Pre-load all assets to prevent gaps) ---
+        // --- 3. Asset Loader ---
         const loadSegmentAssets = async (segment: StorySegment) => {
              const imageUrls = segment.imageUrls && segment.imageUrls.length > 0 ? segment.imageUrls : (segment.imageUrl ? [segment.imageUrl] : []);
              const images: HTMLImageElement[] = [];
@@ -414,7 +412,7 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                  videoElement = document.createElement('video');
                  videoElement.crossOrigin = "anonymous";
                  videoElement.src = segment.videoUrl;
-                 videoElement.muted = true; // We play audio via WebAudio if needed, usually embedded video audio is not used or separate
+                 videoElement.muted = true;
                  await new Promise((resolve) => {
                      videoElement!.onloadedmetadata = resolve;
                      videoElement!.onerror = resolve;
@@ -425,7 +423,7 @@ export const Slideshow: React.FC<SlideshowProps> = ({
              return { images, audioBuffer, videoElement };
         }
 
-        // --- 4. Drawing Functions (Design Matching) ---
+        // --- 4. Drawing Functions ---
         
         const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
              ctx.beginPath();
@@ -447,21 +445,20 @@ export const Slideshow: React.FC<SlideshowProps> = ({
             mainVisual: HTMLImageElement | HTMLVideoElement | null,
             text: string, 
             segmentIndex: number,
-            visualScale: number = 1
+            visualScale: number = 1,
+            visualTransform: VisualTransform = { scale: 1, x: 0, y: 0 }
         ) => {
-             // Responsive sizing based on resolution
              const is1080p = width === 1920;
              const scaleM = is1080p ? 1.5 : 1;
 
-             // 1. Background (Full Screen Blur)
              ctx.save();
+             // Draw Background Blur
              if (bgImage) {
                  ctx.filter = `blur(${is1080p ? 30 : 20}px) brightness(0.4)`;
                  const imgAspect = (bgImage instanceof HTMLVideoElement ? bgImage.videoWidth : bgImage.width) / 
                                    (bgImage instanceof HTMLVideoElement ? bgImage.videoHeight : bgImage.height);
                  const canvasAspect = width / height;
                  let dw = width, dh = height;
-                 // Cover logic
                  if (imgAspect > canvasAspect) dw = height * imgAspect;
                  else dh = width / imgAspect;
                  ctx.drawImage(bgImage, (width-dw)/2, (height-dh)/2, dw, dh);
@@ -471,26 +468,22 @@ export const Slideshow: React.FC<SlideshowProps> = ({
              }
              ctx.restore();
 
-             // 2. Main Visual (Left Side - Rounded & Shadow)
              if (mainVisual) {
                  ctx.save();
-                 // Container params
                  const visW = 600 * scaleM;
                  const visH = 520 * scaleM;
-                 const visX = (width * 0.08); // 8% margin left
+                 const visX = (width * 0.08); 
                  const visY = (height - visH) / 2;
                  
-                 // Shadow
+                 // Card Shadow
                  ctx.shadowColor = 'rgba(0,0,0,0.5)';
                  ctx.shadowBlur = 40 * scaleM;
                  ctx.shadowOffsetX = 0;
                  ctx.shadowOffsetY = 15 * scaleM;
 
-                 // Draw Clipping Path for rounded corners
                  drawRoundedRect(ctx, visX, visY, visW, visH, 24 * scaleM);
                  ctx.clip();
 
-                 // Draw Visual (Contain logic)
                  const vW = (mainVisual instanceof HTMLVideoElement ? mainVisual.videoWidth : mainVisual.width);
                  const vH = (mainVisual instanceof HTMLVideoElement ? mainVisual.videoHeight : mainVisual.height);
                  const vAspect = vW / vH;
@@ -499,38 +492,52 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                  let dW = visW;
                  let dH = visH;
                  
-                 // Contain logic inside the box
                  if (vAspect > cAspect) dH = visW / vAspect;
                  else dW = visH * vAspect;
                  
                  const dX = visX + (visW - dW)/2;
                  const dY = visY + (visH - dH)/2;
                  
-                 // Apply Ken Burns scale
+                 // Apply Transform
                  ctx.translate(visX + visW/2, visY + visH/2);
-                 ctx.scale(visualScale, visualScale);
+                 const isManualTransform = visualTransform.scale !== 1 || visualTransform.x !== 0 || visualTransform.y !== 0;
+                 const finalScale = isManualTransform ? visualTransform.scale : visualScale;
+                 const finalX = (visualTransform.x / 100) * visW;
+                 const finalY = (visualTransform.y / 100) * visH;
+                 
+                 ctx.scale(finalScale, finalScale);
+                 ctx.translate(finalX, finalY);
                  ctx.translate(-(visX + visW/2), -(visY + visH/2));
 
-                 // Black background for visual container
+                 // Black background behind image
                  ctx.fillStyle = '#000';
                  ctx.fillRect(visX, visY, visW, visH);
 
                  ctx.drawImage(mainVisual, dX, dY, dW, dH);
+                 
+                 // Draw Inner Border (Translucent white)
+                 ctx.resetTransform();
+                 
+                 ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                 ctx.lineWidth = 4 * scaleM;
+                 drawRoundedRect(ctx, visX, visY, visW, visH, 24 * scaleM);
+                 ctx.stroke();
+
                  ctx.restore();
              }
 
-             // 3. Text Column (Right Side)
+             // Draw Text Layout
              ctx.save();
              const textW = 460 * scaleM;
              const textX = (width * 0.58);
              const textY = (height * 0.2);
              
-             // Scene Badge
+             // Scene Label
              ctx.font = `bold ${16 * scaleM}px "Inter", sans-serif`;
              ctx.fillStyle = '#fcd34d'; // brand-300
              ctx.fillText(`SCENE ${segmentIndex + 1}`, textX, textY);
              
-             // Main Text
+             // Main Story Text
              ctx.fillStyle = '#ffffff';
              const rawFont = presentationConfig.fontFamily;
              const family = rawFont.split(',')[0].replace(/['"]/g, '');
@@ -540,12 +547,12 @@ export const Slideshow: React.FC<SlideshowProps> = ({
              ctx.font = `${finalSize}px "${family}", sans-serif`;
              ctx.textBaseline = 'top';
              
-             // Word Wrap
              const words = text.split(' ');
              let line = '';
              let y = textY + (50 * scaleM);
              const lineHeight = finalSize * 1.5;
 
+             // Word wrapping
              for(let n = 0; n < words.length; n++) {
                  const testLine = line + words[n] + ' ';
                  const metrics = ctx.measureText(testLine);
@@ -563,7 +570,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
 
         // --- 5. Render Loop ---
 
-        // Title Card
         if (topic) {
              setExportStatus("Rendering Title...");
              const titleDuration = 3;
@@ -574,7 +580,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
              const scaleM = is1080p ? 1.5 : 1;
 
              for (let f=0; f<frames; f++) {
-                 // Enforce timing for recorder
                  await new Promise(r => setTimeout(r, frameInterval));
 
                  ctx.fillStyle = "#fefce8"; // brand-50
@@ -585,7 +590,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                  ctx.textAlign = "center";
                  ctx.textBaseline = "middle";
                  
-                 // Simple Fade In
                  ctx.globalAlpha = Math.min(1, f/(fps));
                  ctx.fillText(topic, width/2, height/2);
                  
@@ -595,14 +599,14 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                  ctx.globalAlpha = 1;
              }
         }
+        
+        let previousFrameCanvas: HTMLCanvasElement | null = null;
 
-        // Segment Loop
         for (let i = 0; i < segments.length; i++) {
             setExportStatus(`Rendering Scene ${i+1}/${segments.length}...`);
             const segment = segments[i];
             const { images, audioBuffer, videoElement } = await loadSegmentAssets(segment);
             
-            // Calculate Duration
             let segDuration = 5;
             let playbackRate = 1;
 
@@ -611,46 +615,53 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                  if (narrator && narrator.voiceSpeed) playbackRate = narrator.voiceSpeed;
             }
 
-            if (audioBuffer) {
-                segDuration = (audioBuffer.duration / playbackRate) + 1.5; // Padding
+            if (segment.customDuration) {
+                segDuration = segment.customDuration;
+            } else if (audioBuffer) {
+                segDuration = (audioBuffer.duration / playbackRate) + 1.5; 
             } else if (videoElement) {
                 const start = segment.videoConfig?.trimStart || 0;
                 const end = segment.videoConfig?.trimEnd || videoElement.duration;
-                segDuration = Math.max(2, end - start);
+                const speed = segment.videoConfig?.playbackRate || 1;
+                segDuration = Math.max(2, (end - start) / speed);
             } else if (images.length > 1) {
                 segDuration = images.length * 4;
             }
 
             if (!isFinite(segDuration)) segDuration = 5;
 
-            // Start Audio
             if (audioBuffer) {
                 const node = actx.createBufferSource();
                 node.buffer = audioBuffer;
                 node.playbackRate.value = playbackRate;
-                node.connect(dest); // Connect to recorder destination
+                node.connect(dest); 
                 node.start(actx.currentTime);
             }
 
-            // Start Video Element
             if (videoElement) {
                 videoElement.currentTime = segment.videoConfig?.trimStart || 0;
+                videoElement.playbackRate = segment.videoConfig?.playbackRate || 1;
                 videoElement.play().catch(() => {});
                 videoElement.loop = true;
             }
 
             const totalFrames = Math.ceil(segDuration * fps);
+            const activeTransform = segment.visualTransform || { scale: 1, x: 0, y: 0 };
             
+            // Transition configuration
+            const transitionType = segment.transition || 'fade';
+            const transitionDuration = 1.0; 
+            const transitionFrames = fps * transitionDuration;
+
             for (let f = 0; f < totalFrames; f++) {
                 await new Promise(r => setTimeout(r, frameInterval));
                 
-                // Clear
+                // Clear and background
                 ctx.fillStyle = "#000";
                 ctx.fillRect(0,0, width, height);
 
                 const segTime = f / fps;
                 
-                // Determine visuals
                 let bgVisual = null;
                 let mainVisual = null;
                 let scale = 1;
@@ -665,24 +676,129 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                      }
                      bgVisual = images[imgIdx];
                      mainVisual = images[imgIdx];
-                     // Ken Burns Effect
-                     scale = 1 + (0.05 * (f / totalFrames));
+                     
+                     if (activeTransform.scale === 1 && activeTransform.x === 0 && activeTransform.y === 0) {
+                        scale = 1 + (0.05 * (f / totalFrames));
+                     }
                 }
 
-                drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale);
+                // If transitioning in from previous scene (i > 0)
+                const isTransitioning = i > 0 && f < transitionFrames && previousFrameCanvas;
                 
-                // Update UI Progress
+                if (isTransitioning) {
+                    const progress = f / transitionFrames; // 0 to 1
+                    
+                    // Draw Current Scene first?
+                    // For Fade: Previous on top fading out, or Current on top fading in?
+                    // Let's put Previous on bottom, Current on top with Alpha?
+                    // Or Previous on top with 1-Alpha.
+                    
+                    if (transitionType === 'fade') {
+                        // Draw Current normally
+                        drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
+                        
+                        // Draw Previous on top fading out
+                        ctx.save();
+                        ctx.globalAlpha = 1 - progress;
+                        ctx.drawImage(previousFrameCanvas!, 0, 0);
+                        ctx.restore();
+                    } 
+                    else if (transitionType === 'slide') {
+                        // Slide Next in from right
+                        const offset = width * (1 - progress); 
+                        
+                        // Draw Previous (moving left slightly for parallax, or staying static)
+                        ctx.drawImage(previousFrameCanvas!, -width * 0.2 * progress, 0); // Parallax exit
+                        
+                        // Draw Next sliding in
+                        ctx.save();
+                        ctx.translate(offset, 0);
+                        drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
+                        ctx.restore();
+                    }
+                    else if (transitionType === 'curtain') {
+                        // Previous slides up revealing Next
+                        const offset = height * progress;
+                        
+                        // Draw Next (static background)
+                        drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
+                        
+                        // Draw Previous sliding up
+                        ctx.save();
+                        ctx.translate(0, -offset);
+                        ctx.drawImage(previousFrameCanvas!, 0, 0);
+                        ctx.restore();
+                    }
+                    else if (transitionType === 'zoom') {
+                        // Next zooms in from 0 scale
+                        // Draw Previous
+                        ctx.drawImage(previousFrameCanvas!, 0, 0);
+                        
+                        // Draw Next scaling up
+                        ctx.save();
+                        const s = progress;
+                        ctx.translate(width/2, height/2);
+                        ctx.scale(s, s);
+                        ctx.translate(-width/2, -height/2);
+                        // Force alpha fade in too
+                        ctx.globalAlpha = progress;
+                        drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
+                        ctx.restore();
+                    }
+                    else if (transitionType === 'flip') {
+                         // Simple flip effect
+                         // 0-0.5: Previous flips out
+                         // 0.5-1: Next flips in
+                         
+                         if (progress < 0.5) {
+                             // Draw Previous shrinking width
+                             const p = progress * 2; // 0 to 1
+                             ctx.save();
+                             ctx.translate(width/2, height/2);
+                             ctx.scale(1 - p, 1); // Flip horizontal squeeze
+                             ctx.translate(-width/2, -height/2);
+                             ctx.drawImage(previousFrameCanvas!, 0, 0);
+                             ctx.restore();
+                         } else {
+                             // Draw Next growing width
+                             const p = (progress - 0.5) * 2; // 0 to 1
+                             ctx.save();
+                             ctx.translate(width/2, height/2);
+                             ctx.scale(p, 1);
+                             ctx.translate(-width/2, -height/2);
+                             drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
+                             ctx.restore();
+                         }
+                    }
+                    else {
+                        // Fallback
+                        drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
+                    }
+
+                } else {
+                    // Normal Draw
+                    drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
+                }
+                
+                // Capture last frame for next transition
+                if (f === totalFrames - 1) {
+                    if (!previousFrameCanvas) {
+                        previousFrameCanvas = document.createElement('canvas');
+                        previousFrameCanvas.width = width;
+                        previousFrameCanvas.height = height;
+                    }
+                    previousFrameCanvas.getContext('2d')?.drawImage(canvas, 0, 0);
+                }
+                
                 setExportProgress(Math.round(((i * totalFrames + f) / (segments.length * totalFrames)) * 100));
             }
 
-            // Clean up video
             if (videoElement) {
                 videoElement.pause();
                 videoElement.remove();
             }
         }
 
-        // End Black Fade
         for(let i=0; i<fps; i++) {
              await new Promise(r => setTimeout(r, frameInterval));
              ctx.fillStyle = `rgba(0,0,0,${i/fps})`;
@@ -691,23 +807,18 @@ export const Slideshow: React.FC<SlideshowProps> = ({
 
         setExportStatus("Finalizing...");
         
-        // Wait to finish processing
         mediaRecorder.stop();
         bgSource?.stop();
         
-        // Wait for stop event
         await new Promise<void>((resolve) => {
              mediaRecorder.onstop = () => {
                 const blob = new Blob(chunks, { type: selectedMimeType });
-                console.log("Recorded Blob Size:", blob.size);
-                
                 if (blob.size < 100) {
                      alert("Export failed: Video file is empty.");
                 } else {
                      const url = URL.createObjectURL(blob);
                      const a = document.createElement('a');
                      a.href = url;
-                     // Use .mp4 extension if we managed to get mp4 mime type, otherwise .webm
                      const ext = selectedMimeType.includes('mp4') ? 'mp4' : 'webm';
                      a.download = `story-export-${Date.now()}.${ext}`;
                      a.click();
@@ -728,9 +839,8 @@ export const Slideshow: React.FC<SlideshowProps> = ({
 
   const currentSegment = segments[currentIndex];
   
-  // Helper to get font size class
   const getSizeClass = () => {
-      let size = "text-2xl md:text-4xl leading-relaxed"; // Default (medium)
+      let size = "text-2xl md:text-4xl leading-relaxed"; 
       if (presentationConfig.fontSize === 'small') size = "text-lg md:text-2xl leading-normal";
       if (presentationConfig.fontSize === 'large') size = "text-3xl md:text-5xl leading-snug";
       if (presentationConfig.fontSize === 'xl') size = "text-4xl md:text-6xl leading-none";
@@ -739,7 +849,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
   
   const transitionClass = `animate-scene-${currentSegment.transition || 'fade'}`;
 
-  // Get active image(s)
   const images = currentSegment.imageUrls && currentSegment.imageUrls.length > 0 
         ? currentSegment.imageUrls 
         : (currentSegment.imageUrl ? [currentSegment.imageUrl] : []);
@@ -749,7 +858,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center animate-fade-in">
       
-      {/* Export Options Modal */}
       {showExportModal && (
           <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up">
@@ -817,7 +925,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
           </div>
       )}
 
-      {/* Export Overlay */}
       {isExporting && (
         <div className="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center text-white">
             <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden mb-4 border border-gray-700">
@@ -828,7 +935,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
         </div>
       )}
 
-      {/* Controls & Close */}
       {!isExporting && !showExportModal && (
       <div className="absolute top-4 right-4 z-20 flex gap-2">
          <Button 
@@ -849,10 +955,8 @@ export const Slideshow: React.FC<SlideshowProps> = ({
       </div>
       )}
 
-      {/* Main Slide Content Wrapper with Transition Key */}
       <div key={currentSegment.id} className={`w-full h-full relative flex items-center justify-center overflow-hidden ${transitionClass}`}>
         
-        {/* Background Image(s) with Cross-fade Logic (If no video) */}
         {!currentSegment.videoUrl && images.map((img, idx) => (
              <div 
                 key={`${currentSegment.id}-img-${idx}`}
@@ -861,7 +965,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
              />
         ))}
 
-        {/* Video Background (if present) - blurred version */}
         {currentSegment.videoUrl && (
             <video 
                 src={currentSegment.videoUrl} 
@@ -875,9 +978,7 @@ export const Slideshow: React.FC<SlideshowProps> = ({
 
         <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/40 z-0 pointer-events-none"></div>
 
-        {/* Content Container */}
         <div className="relative z-10 w-full max-w-7xl h-full flex flex-col md:flex-row items-center justify-center p-8 gap-8 md:gap-16">
-            {/* Image/Video (Foreground) */}
             <div className="flex-1 w-full max-h-[40vh] md:max-h-[80vh] flex items-center justify-center order-1 md:order-1">
                  {currentSegment.videoUrl ? (
                      <div className="relative rounded-2xl shadow-2xl border-4 border-white/10 overflow-hidden w-full h-full max-w-full flex items-center bg-black">
@@ -893,7 +994,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                      </div>
                  ) : activeImage ? (
                     <div className="relative rounded-2xl shadow-2xl border-4 border-white/10 overflow-hidden w-auto h-auto max-h-full max-w-full">
-                        {/* Render all images stacked but control opacity for transition */}
                         {images.map((img, idx) => (
                              <img 
                                 key={idx}
@@ -910,14 +1010,12 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                  )}
             </div>
 
-            {/* Text & Narration Container */}
             <div className="flex-1 w-full md:w-auto order-2 md:order-2 flex flex-col justify-center max-w-xl z-20 min-h-0">
                  <div key={`text-${currentSegment.id}`} className="flex flex-col max-h-[40vh] md:max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
                     <div className="inline-flex items-center gap-2 mb-4 px-4 py-1 rounded-full bg-brand-500/20 border border-brand-500/40 text-brand-300 font-bold uppercase tracking-widest text-xs md:text-sm animate-fade-in w-fit">
                         Scene {currentIndex + 1}
                     </div>
                     
-                    {/* Animated Script Text */}
                     <div 
                         className={`${getSizeClass()} text-white drop-shadow-md`}
                         style={{ fontFamily: presentationConfig.fontFamily }}
@@ -939,7 +1037,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
         </div>
       </div>
 
-      {/* Bottom Navigation */}
       <div className="absolute bottom-6 left-0 w-full flex items-center justify-center gap-8 z-30 pb-safe">
         <button 
             onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
@@ -967,7 +1064,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
         </button>
       </div>
       
-      {/* Progress Bar */}
       <div className="absolute bottom-0 left-0 h-1 bg-brand-500 transition-all duration-300 z-30" style={{ width: `${((currentIndex + 1) / segments.length) * 100}%` }}></div>
     </div>
   );

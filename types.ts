@@ -22,12 +22,41 @@ export interface StorySegment {
 
   animation?: TextAnimation;
   transition?: SceneTransition; // New: Transition style
+  
+  // Studio Specific
+  customDuration?: number; // Override default duration
+  visualTransform?: VisualTransform; // Pan/Zoom settings
+  elements?: OverlayElement[]; // New: Drag & Drop Elements (Text, Stickers)
+}
+
+export interface OverlayElement {
+    id: string;
+    type: 'text' | 'image' | 'shape';
+    content: string; // Text content or Image URL
+    x: number; // % relative to canvas width
+    y: number; // % relative to canvas height
+    width?: number; // %
+    height?: number; // %
+    style?: {
+        color?: string;
+        fontSize?: number;
+        fontFamily?: string;
+        backgroundColor?: string;
+        borderRadius?: number;
+    };
 }
 
 export interface VideoConfig {
     trimStart?: number; // seconds
     trimEnd?: number; // seconds
     filter?: string; // css filter string
+    playbackRate?: number; // New: 0.5 to 2.0
+}
+
+export interface VisualTransform {
+    scale: number; // 1.0 to 3.0
+    x: number; // Horizontal offset %
+    y: number; // Vertical offset %
 }
 
 export type TextAnimation = 'fade' | 'slide-up' | 'pop' | 'typewriter' | 'slide-right';

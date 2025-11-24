@@ -17,7 +17,7 @@ const App: React.FC = () => {
               <Sparkles className="w-6 h-6" />
             </div>
             <h1 className="text-xl md:text-2xl font-bold font-comic text-brand-900 tracking-tight">
-              Teacher's Imagination
+              Imagination
             </h1>
           </div>
 
