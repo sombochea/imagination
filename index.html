@@ -1,0 +1,144 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Teacher's Imagination Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Battambang:wght@400;700&family=Comic+Neue:wght@400;700&family=Fasthand&family=Inter:wght@400;500;600;700&family=Kantumruy+Pro:wght@400;700&family=Lobster&family=Lora:wght@400;600&family=Merriweather:wght@400;700&family=Moul&family=Nokora:wght@400;700&family=Nunito:wght@400;700&family=Outfit:wght@400;500;600;700&family=Playpen+Sans:wght@400;700&family=Roboto:wght@400;700&family=Siemreap&family=Suwannaphum:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Outfit', 'Inter', 'sans-serif'],
+              comic: ['"Comic Neue"', 'cursive'],
+              serif: ['"Lora"', 'serif'],
+            },
+            colors: {
+              brand: {
+                50: '#fffbeb',
+                100: '#fef3c7',
+                200: '#fde68a',
+                300: '#fcd34d',
+                400: '#fbbf24',
+                500: '#f59e0b',
+                600: '#d97706',
+                700: '#b45309',
+                800: '#92400e',
+                900: '#78350f',
+                950: '#451a03',
+              }
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-out forwards',
+              'slide-up': 'slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'slide-right': 'slideRight 0.6s ease-out forwards',
+              'pop': 'popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+              'typewriter': 'typewriter 2s steps(40, end) forwards',
+              'ken-burns': 'kenBurns 20s ease-out infinite alternate',
+              // New Scene Transitions
+              'scene-fade': 'fadeIn 1s ease-in-out forwards',
+              'scene-slide': 'slideInRight 0.8s ease-out forwards',
+              'scene-zoom': 'zoomIn 1s ease-out forwards',
+              'scene-flip': 'flipIn 0.8s ease-out forwards',
+              'scene-curtain': 'curtainDown 1s ease-out forwards',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { opacity: '0', transform: 'translateY(15px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              slideRight: {
+                '0%': { opacity: '0', transform: 'translateX(-30px)' },
+                '100%': { opacity: '1', transform: 'translateX(0)' },
+              },
+              popIn: {
+                '0%': { opacity: '0', transform: 'scale(0.9)' },
+                '100%': { opacity: '1', transform: 'scale(1)' },
+              },
+              typewriter: {
+                '0%': { opacity: '0', width: '0' },
+                '1%': { opacity: '1', width: '0' },
+                '100%': { opacity: '1', width: '100%' },
+              },
+              kenBurns: {
+                '0%': { transform: 'scale(1)' },
+                '100%': { transform: 'scale(1.15)' },
+              },
+              // Scene Transition Keyframes
+              slideInRight: {
+                '0%': { transform: 'translateX(100%)', opacity: '0' },
+                '100%': { transform: 'translateX(0)', opacity: '1' },
+              },
+              zoomIn: {
+                '0%': { transform: 'scale(0.5)', opacity: '0' },
+                '100%': { transform: 'scale(1)', opacity: '1' },
+              },
+              flipIn: {
+                '0%': { transform: 'rotateY(90deg)', opacity: '0' },
+                '100%': { transform: 'rotateY(0)', opacity: '1' },
+              },
+              curtainDown: {
+                '0%': { transform: 'translateY(-100%)' },
+                '100%': { transform: 'translateY(0)' },
+              }
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      body {
+        background-color: #fffbeb; /* brand-50 */
+      }
+      
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #fef3c7; /* brand-100 */
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #fbbf24; /* brand-400 */
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #f59e0b; /* brand-500 */
+      }
+
+      /* Hide scrollbar utility */
+      .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+      }
+      .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
