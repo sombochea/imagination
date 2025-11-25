@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { StorySegment, SceneTransition, VisualTransform, VideoConfig, OverlayElement } from '../types';
 import { Button } from './Button';
-import { Play, Pause, X, ChevronLeft, ChevronRight, Sliders, Image as ImageIcon, Maximize, Scissors, Layers, Clock, MonitorPlay, Film, Zap, Undo, Redo, Video, Type, Box, Upload, Trash2, Move, MousePointer2, Eye, EyeOff, ArrowUp, ArrowDown, Plus, Grid3X3, Timer, Shapes, Sticker, Smile } from 'lucide-react';
+import { Play, Pause, X, ChevronLeft, ChevronRight, Sliders, Image as ImageIcon, Maximize, Scissors, Layers, Clock, MonitorPlay, Film, Zap, Undo, Redo, Video, Type, Box, Upload, Trash2, Move, MousePointer2, Eye, EyeOff, ArrowUp, ArrowDown, Plus, Grid3X3, Timer, Shapes, Sticker, Smile, Palette, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface VideoStudioProps {
     segments: StorySegment[];
@@ -157,7 +157,6 @@ const applySnapping = (val: number, useGrid: boolean, canvasSize?: number) => {
     return { val: snapped, snapped: isSnapped };
 };
 
-
 // Robust Input Component
 const LiveInput = ({ 
     label,
@@ -195,6 +194,25 @@ const LiveInput = ({
                 className={className} 
                 {...props} 
             />
+        </div>
+    );
+};
+
+const CollapsibleSection = ({ title, children, defaultOpen = true, icon: Icon, active = false }: any) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+    return (
+        <div className={`border-b border-gray-700 ${active ? 'bg-[#2a2a2a]' : ''}`}>
+            <button 
+                onClick={() => setIsOpen(!isOpen)} 
+                className="w-full flex items-center justify-between p-4 hover:bg-[#333] transition-colors"
+            >
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-400 group-hover:text-gray-200">
+                    {Icon && <Icon className="w-3.5 h-3.5 text-gray-500" />}
+                    {title}
+                </div>
+                {isOpen ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
+            </button>
+            {isOpen && <div className="p-4 pt-0 space-y-4 animate-fade-in">{children}</div>}
         </div>
     );
 };
@@ -963,8 +981,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ segments, onUpdateSegm
                     <div className="h-14 border-t border-gray-700 bg-[#1e1e1e] flex items-center justify-center gap-6 z-20">
                         <button onClick={() => { setIsPlaying(false); const prev = Math.max(0, selectedIndex - 1); setSelectedId(segments[prev].id); }} className="p-2 hover:text-white text-gray-500 transition-colors"><ChevronLeft className="w-5 h-5" /></button>
                         <button onClick={() => { if (isPlaying) { setIsPlaying(false); pausedElapsedRef.current = Date.now() - playbackStartRef.current; } else { setIsPlaying(true); } }} className="w-12 h-12 rounded-full bg-brand-500 hover:bg-brand-400 text-white flex items-center justify-center shadow-lg shadow-brand-500/20 transform active:scale-95 transition-all">
-                            {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
-                        </button>
+                            {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}</button>
                         <button onClick={() => { setIsPlaying(false); const next = Math.min(segments.length - 1, selectedIndex + 1); setSelectedId(segments[next].id); }} className="p-2 hover:text-white text-gray-500 transition-colors"><ChevronRight className="w-5 h-5" /></button>
                     </div>
                 </div>
@@ -972,136 +989,142 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ segments, onUpdateSegm
                 {/* RIGHT: Inspector */}
                 <div className="w-80 bg-[#252525] border-l border-gray-700 flex flex-col overflow-y-auto custom-scrollbar">
                     {selectedElement ? (
-                        <div className="p-5 bg-[#2a2a2a] border-b border-gray-700">
-                            <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-xs font-bold uppercase tracking-wider text-brand-500">{selectedElement.type === 'text' ? 'Text Properties' : 'Element Properties'}</h3>
-                                <button onClick={() => setSelectedElementId(null)} className="text-gray-500 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+                        <div className="pb-10">
+                            <div className="p-5 border-b border-gray-700">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-xs font-bold uppercase tracking-wider text-brand-500">{selectedElement.type === 'text' ? 'Text Properties' : 'Element Properties'}</h3>
+                                    <button onClick={() => setSelectedElementId(null)} className="text-gray-500 hover:text-white transition-colors"><X className="w-4 h-4" /></button>
+                                </div>
                             </div>
-                            <div className="space-y-6">
+
+                            {/* Content */}
+                            {selectedElement.type === 'text' && (
+                                <div className="p-4 border-b border-gray-700">
+                                     <LiveInput 
+                                        key={selectedElement.id} 
+                                        label="Content"
+                                        value={selectedElement.content}
+                                        onUpdate={(val) => {
+                                            const newEls = activeElements.map(el => el.id === selectedElementId ? {...el, content: val} : el);
+                                            onUpdateSegment(selectedId, 'elements', newEls);
+                                        }}
+                                        className="w-full bg-[#181818] border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white focus:border-brand-500 outline-none transition-colors focus:ring-1 focus:ring-brand-500"
+                                    />
+                                </div>
+                            )}
+
+                            {/* Appearance */}
+                            <CollapsibleSection title="Appearance" icon={Palette} active>
                                 {selectedElement.type === 'text' && (
                                     <>
-                                        <LiveInput 
-                                            key={selectedElement.id} 
-                                            label="Content"
-                                            value={selectedElement.content}
-                                            onUpdate={(val) => {
-                                                const newEls = activeElements.map(el => el.id === selectedElementId ? {...el, content: val} : el);
-                                                onUpdateSegment(selectedId, 'elements', newEls);
-                                            }}
-                                            className="w-full bg-[#181818] border border-gray-600 rounded-lg px-3 py-2.5 text-sm text-white focus:border-brand-500 outline-none transition-colors focus:ring-1 focus:ring-brand-500"
-                                        />
                                         <div className="space-y-2">
                                             <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Text Color</label>
                                             <div className="flex gap-2 flex-wrap">
                                                 {['#ffffff', '#000000', '#f59e0b', '#ef4444', '#3b82f6', '#10b981', '#8b5cf6'].map(c => (
-                                                    <button key={c} onClick={() => handleUpdateElement(selectedElementId!, { style: { ...selectedElement.style, color: c } })} className="w-6 h-6 rounded-full border border-gray-600 hover:scale-110 transition-transform shadow-sm" style={{ backgroundColor: c }} />
+                                                    <button key={c} onClick={() => handleUpdateElement(selectedElementId!, { style: { ...selectedElement.style, color: c } })} className={`w-6 h-6 rounded-full border hover:scale-110 transition-transform shadow-sm ${selectedElement.style?.color === c ? 'border-white ring-1 ring-white' : 'border-gray-600'}`} style={{ backgroundColor: c }} />
                                                 ))}
                                             </div>
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Background</label>
                                             <div className="flex gap-2 flex-wrap">
-                                                <button onClick={() => handleUpdateElement(selectedElementId!, { style: { ...selectedElement.style, backgroundColor: 'transparent' } })} className="w-6 h-6 rounded-full border border-gray-600 flex items-center justify-center relative bg-transparent hover:scale-110 transition-transform group" title="None">
+                                                <button onClick={() => handleUpdateElement(selectedElementId!, { style: { ...selectedElement.style, backgroundColor: 'transparent' } })} className={`w-6 h-6 rounded-full border flex items-center justify-center relative bg-transparent hover:scale-110 transition-transform group ${!selectedElement.style?.backgroundColor || selectedElement.style.backgroundColor === 'transparent' ? 'border-white ring-1 ring-white' : 'border-gray-600'}`} title="None">
                                                     <div className="w-0.5 h-full bg-red-500 transform rotate-45"></div>
                                                 </button>
                                                 {['rgba(0,0,0,0.5)', '#ffffff', '#f59e0b', '#ef4444', '#3b82f6', '#10b981'].map(c => (
-                                                    <button key={c} onClick={() => handleUpdateElement(selectedElementId!, { style: { ...selectedElement.style, backgroundColor: c } })} className="w-6 h-6 rounded-full border border-gray-600 hover:scale-110 transition-transform shadow-sm" style={{ backgroundColor: c }} />
+                                                    <button key={c} onClick={() => handleUpdateElement(selectedElementId!, { style: { ...selectedElement.style, backgroundColor: c } })} className={`w-6 h-6 rounded-full border hover:scale-110 transition-transform shadow-sm ${selectedElement.style?.backgroundColor === c ? 'border-white ring-1 ring-white' : 'border-gray-600'}`} style={{ backgroundColor: c }} />
                                                 ))}
                                             </div>
                                         </div>
-                                        <div className="space-y-2">
-                                            <div className="flex justify-between"><label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Font Size</label> <span className="text-[10px] text-gray-500 font-mono">{selectedElement.style?.fontSize}px</span></div>
-                                            <input type="range" min="10" max="100" value={selectedElement.style?.fontSize || 40} onChange={(e) => handleUpdateElement(selectedElementId!, { style: { ...selectedElement.style, fontSize: parseInt(e.target.value) } })} className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-brand-500" />
-                                        </div>
                                     </>
                                 )}
-                                
-                                <div className="space-y-3 pt-4 border-t border-gray-700">
-                                    <h4 className="text-[10px] text-gray-400 font-bold uppercase tracking-wider flex items-center gap-1"><Timer className="w-3 h-3" /> Timing</h4>
-                                    <div className="bg-[#222] p-3 rounded-lg border border-gray-600 space-y-3">
-                                        <div>
-                                            <div className="flex justify-between text-[10px] mb-1 text-gray-400"><span>Start</span> <span className="text-white font-mono">{selectedElement.startTime?.toFixed(1) || 0}s</span></div>
-                                            <input 
-                                                type="range" 
-                                                min="0" 
-                                                max={currentSegmentDurationRef.current} 
-                                                step="0.1" 
-                                                value={selectedElement.startTime || 0} 
-                                                onChange={(e) => {
-                                                    const val = parseFloat(e.target.value);
-                                                    if (val < (selectedElement.endTime || currentSegmentDurationRef.current)) {
-                                                        handleUpdateElement(selectedElementId!, { startTime: val });
-                                                    }
-                                                }}
-                                                className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-brand-500" 
-                                            />
-                                        </div>
-                                        <div>
-                                            <div className="flex justify-between text-[10px] mb-1 text-gray-400"><span>End</span> <span className="text-white font-mono">{selectedElement.endTime?.toFixed(1) || currentSegmentDurationRef.current.toFixed(1)}s</span></div>
-                                            <input 
-                                                type="range" 
-                                                min="0" 
-                                                max={currentSegmentDurationRef.current} 
-                                                step="0.1" 
-                                                value={selectedElement.endTime || currentSegmentDurationRef.current} 
-                                                onChange={(e) => {
-                                                    const val = parseFloat(e.target.value);
-                                                    if (val > (selectedElement.startTime || 0)) {
-                                                        handleUpdateElement(selectedElementId!, { endTime: val });
-                                                    }
-                                                }}
-                                                className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-brand-500" 
-                                            />
-                                        </div>
+                                <div className="space-y-2">
+                                    <div className="flex justify-between"><label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{selectedElement.type === 'text' ? 'Font Size' : 'Scale'}</label> <span className="text-[10px] text-gray-500 font-mono">{selectedElement.type === 'text' ? selectedElement.style?.fontSize : selectedElement.width?.toFixed(0)}</span></div>
+                                    {selectedElement.type === 'text' ? (
+                                         <input type="range" min="10" max="100" value={selectedElement.style?.fontSize || 40} onChange={(e) => handleUpdateElement(selectedElementId!, { style: { ...selectedElement.style, fontSize: parseInt(e.target.value) } })} className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-brand-500" />
+                                    ) : (
+                                         <input type="range" min="10" max="100" value={selectedElement.width || 25} onChange={(e) => handleUpdateElement(selectedElementId!, { width: parseInt(e.target.value), height: parseInt(e.target.value) })} className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-brand-500" />
+                                    )}
+                                </div>
+                            </CollapsibleSection>
+
+                            {/* Timing */}
+                            <CollapsibleSection title="Timing" icon={Timer}>
+                                <div className="bg-[#222] p-3 rounded-lg border border-gray-600 space-y-3">
+                                    <div>
+                                        <div className="flex justify-between text-[10px] mb-1 text-gray-400"><span>Start</span> <span className="text-white font-mono">{selectedElement.startTime?.toFixed(1) || 0}s</span></div>
+                                        <input 
+                                            type="range" 
+                                            min="0" 
+                                            max={currentSegmentDurationRef.current} 
+                                            step="0.1" 
+                                            value={selectedElement.startTime || 0} 
+                                            onChange={(e) => {
+                                                const val = parseFloat(e.target.value);
+                                                if (val < (selectedElement.endTime || currentSegmentDurationRef.current)) {
+                                                    handleUpdateElement(selectedElementId!, { startTime: val });
+                                                }
+                                            }}
+                                            className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-brand-500" 
+                                        />
+                                    </div>
+                                    <div>
+                                        <div className="flex justify-between text-[10px] mb-1 text-gray-400"><span>End</span> <span className="text-white font-mono">{selectedElement.endTime?.toFixed(1) || currentSegmentDurationRef.current.toFixed(1)}s</span></div>
+                                        <input 
+                                            type="range" 
+                                            min="0" 
+                                            max={currentSegmentDurationRef.current} 
+                                            step="0.1" 
+                                            value={selectedElement.endTime || currentSegmentDurationRef.current} 
+                                            onChange={(e) => {
+                                                const val = parseFloat(e.target.value);
+                                                if (val > (selectedElement.startTime || 0)) {
+                                                    handleUpdateElement(selectedElementId!, { endTime: val });
+                                                }
+                                            }}
+                                            className="w-full h-1.5 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-brand-500" 
+                                        />
                                     </div>
                                 </div>
+                            </CollapsibleSection>
 
-                                <Button size="sm" variant="danger" onClick={() => handleDeleteElement(selectedElementId!)} className="w-full mt-4 bg-red-900/10 text-red-400 border-red-900/30 hover:bg-red-900/30 hover:border-red-900/50">
+                            <div className="p-4">
+                                <Button size="sm" variant="danger" onClick={() => handleDeleteElement(selectedElementId!)} className="w-full bg-red-900/10 text-red-400 border-red-900/30 hover:bg-red-900/30 hover:border-red-900/50">
                                     <Trash2 className="w-3.5 h-3.5" /> Delete Element
                                 </Button>
                             </div>
                         </div>
                     ) : (
-                    <div className="p-5 border-b border-gray-700">
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Global Inspector</h3>
-                        <p className="font-bold text-white truncate text-lg">{selectedIndex + 1}. {selectedSegment?.videoUrl ? 'Video Clip' : 'Image Scene'}</p>
-                    </div>
-                    )}
-                    
-                    {/* Layer Panel */}
-                    {selectedSegment && activeElements.length > 0 && (
+                    <div className="pb-10">
                         <div className="p-5 border-b border-gray-700">
-                             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-4 flex items-center gap-1">
-                                 <Layers className="w-3 h-3" /> Layers
-                             </h3>
-                             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
-                                 {[...activeElements].map((_, i, arr) => arr[arr.length - 1 - i]).map((el) => {
-                                     const idx = activeElements.findIndex(e => e.id === el.id);
-                                     return (
-                                     <div key={el.id} onClick={() => setSelectedElementId(el.id)} className={`flex items-center gap-3 p-2.5 rounded-lg text-xs cursor-pointer group transition-all ${el.id === selectedElementId ? 'bg-brand-900/30 text-brand-100 border border-brand-800' : 'bg-[#333]/50 hover:bg-[#333] text-gray-300 border border-transparent'}`}>
-                                         {el.type === 'text' ? <Type className="w-3.5 h-3.5 opacity-70" /> : <ImageIcon className="w-3.5 h-3.5 opacity-70" />}
-                                         <span className="flex-1 truncate select-none font-medium">{el.type === 'image' ? 'Image Overlay' : el.content}</span>
-                                         <button onClick={(e) => handleToggleVisibility(el.id, e)} className="text-gray-500 hover:text-white p-1 rounded hover:bg-white/10 transition-colors">{el.visible === false ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}</button>
-                                         <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                             <button onClick={(e) => handleMoveLayer(idx, 'up', e)} disabled={idx === activeElements.length - 1} className="hover:text-white disabled:opacity-20 disabled:hover:text-gray-600"><ArrowUp className="w-2.5 h-2.5" /></button>
-                                             <button onClick={(e) => handleMoveLayer(idx, 'down', e)} disabled={idx === 0} className="hover:text-white disabled:opacity-20 disabled:hover:text-gray-600"><ArrowDown className="w-2.5 h-2.5" /></button>
-                                         </div>
-                                     </div>
-                                 )})}
-                             </div>
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Global Inspector</h3>
+                            <p className="font-bold text-white truncate text-lg">{selectedIndex + 1}. {selectedSegment?.videoUrl ? 'Video Clip' : 'Image Scene'}</p>
                         </div>
-                    )}
 
-                    {selectedSegment && !selectedElement && (
-                        <div className="p-5 space-y-8">
-                            {/* Transform / Crop */}
-                            <div>
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className="flex items-center gap-2 text-indigo-400">
-                                        <Maximize className="w-4 h-4" />
-                                        <span className="text-sm font-bold uppercase tracking-wide">Transform</span>
-                                    </div>
-                                    <div className="flex gap-1 bg-black/30 p-1 rounded">
+                         {selectedSegment && activeElements.length > 0 && (
+                            <CollapsibleSection title="Layers" icon={Layers} defaultOpen>
+                                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                                     {[...activeElements].map((_, i, arr) => arr[arr.length - 1 - i]).map((el) => {
+                                         const idx = activeElements.findIndex(e => e.id === el.id);
+                                         return (
+                                         <div key={el.id} onClick={() => setSelectedElementId(el.id)} className={`flex items-center gap-3 p-2.5 rounded-lg text-xs cursor-pointer group transition-all ${el.id === selectedElementId ? 'bg-brand-900/30 text-brand-100 border border-brand-800' : 'bg-[#333]/50 hover:bg-[#333] text-gray-300 border border-transparent'}`}>
+                                             {el.type === 'text' ? <Type className="w-3.5 h-3.5 opacity-70" /> : <ImageIcon className="w-3.5 h-3.5 opacity-70" />}
+                                             <span className="flex-1 truncate select-none font-medium">{el.type === 'image' ? 'Image Overlay' : el.content}</span>
+                                             <button onClick={(e) => handleToggleVisibility(el.id, e)} className="text-gray-500 hover:text-white p-1 rounded hover:bg-white/10 transition-colors">{el.visible === false ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}</button>
+                                             <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                 <button onClick={(e) => handleMoveLayer(idx, 'up', e)} disabled={idx === activeElements.length - 1} className="hover:text-white disabled:opacity-20 disabled:hover:text-gray-600"><ArrowUp className="w-2.5 h-2.5" /></button>
+                                                 <button onClick={(e) => handleMoveLayer(idx, 'down', e)} disabled={idx === 0} className="hover:text-white disabled:opacity-20 disabled:hover:text-gray-600"><ArrowDown className="w-2.5 h-2.5" /></button>
+                                             </div>
+                                         </div>
+                                     )})}
+                                 </div>
+                            </CollapsibleSection>
+                         )}
+
+                         {selectedSegment && (
+                             <CollapsibleSection title="Transform" icon={Maximize}>
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex gap-1 bg-black/30 p-1 rounded ml-auto">
                                         <button onClick={handleUndo} disabled={!canUndo} className={`p-1.5 rounded transition-colors ${canUndo ? 'hover:bg-gray-600 text-gray-300' : 'text-gray-700 cursor-not-allowed'}`} title="Undo"><Undo className="w-3.5 h-3.5" /></button>
                                         <button onClick={handleRedo} disabled={!canRedo} className={`p-1.5 rounded transition-colors ${canRedo ? 'hover:bg-gray-600 text-gray-300' : 'text-gray-700 cursor-not-allowed'}`} title="Redo"><Redo className="w-3.5 h-3.5" /></button>
                                     </div>
@@ -1120,8 +1143,9 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({ segments, onUpdateSegm
                                         <input type="range" min="-50" max="50" step="1" value={activeTransform.y} onPointerDown={recordHistory} onChange={(e) => handleTransformChange('y', parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-indigo-500" />
                                     </div>
                                 </div>
-                            </div>
-                        </div>
+                             </CollapsibleSection>
+                         )}
+                    </div>
                     )}
                 </div>
             </div>
