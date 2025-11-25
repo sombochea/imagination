@@ -86,7 +86,7 @@ export const Slideshow: React.FC<SlideshowProps> = ({
     characters = []
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true); // Default to playing for instant presentation
   const [isMuted, setIsMuted] = useState(false);
   
   // Inner slide state for multiple images
@@ -142,7 +142,7 @@ export const Slideshow: React.FC<SlideshowProps> = ({
   useEffect(() => {
     if (bgMusicRef.current) {
       if (isPlaying && !isMuted) {
-        bgMusicRef.current.play().catch(e => console.log("BG Play failed:", e));
+        bgMusicRef.current.play().catch(e => console.log("BG Play failed (autoplay policy):", e));
       } else {
         bgMusicRef.current.pause();
       }
@@ -231,7 +231,7 @@ export const Slideshow: React.FC<SlideshowProps> = ({
             }
         }
 
-        audio.play().catch(e => console.log("Narration Play failed:", e));
+        audio.play().catch(e => console.log("Narration Play failed (autoplay policy):", e));
         
         // Sync: move to next slide when audio ends
         audio.onended = () => {
@@ -682,86 +682,56 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                      }
                 }
 
-                // If transitioning in from previous scene (i > 0)
                 const isTransitioning = i > 0 && f < transitionFrames && previousFrameCanvas;
                 
                 if (isTransitioning) {
                     const progress = f / transitionFrames; // 0 to 1
                     
-                    // Draw Current Scene first?
-                    // For Fade: Previous on top fading out, or Current on top fading in?
-                    // Let's put Previous on bottom, Current on top with Alpha?
-                    // Or Previous on top with 1-Alpha.
-                    
                     if (transitionType === 'fade') {
-                        // Draw Current normally
                         drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
-                        
-                        // Draw Previous on top fading out
                         ctx.save();
                         ctx.globalAlpha = 1 - progress;
                         ctx.drawImage(previousFrameCanvas!, 0, 0);
                         ctx.restore();
                     } 
                     else if (transitionType === 'slide') {
-                        // Slide Next in from right
                         const offset = width * (1 - progress); 
-                        
-                        // Draw Previous (moving left slightly for parallax, or staying static)
-                        ctx.drawImage(previousFrameCanvas!, -width * 0.2 * progress, 0); // Parallax exit
-                        
-                        // Draw Next sliding in
+                        ctx.drawImage(previousFrameCanvas!, -width * 0.2 * progress, 0); 
                         ctx.save();
                         ctx.translate(offset, 0);
                         drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
                         ctx.restore();
                     }
                     else if (transitionType === 'curtain') {
-                        // Previous slides up revealing Next
                         const offset = height * progress;
-                        
-                        // Draw Next (static background)
                         drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
-                        
-                        // Draw Previous sliding up
                         ctx.save();
                         ctx.translate(0, -offset);
                         ctx.drawImage(previousFrameCanvas!, 0, 0);
                         ctx.restore();
                     }
                     else if (transitionType === 'zoom') {
-                        // Next zooms in from 0 scale
-                        // Draw Previous
                         ctx.drawImage(previousFrameCanvas!, 0, 0);
-                        
-                        // Draw Next scaling up
                         ctx.save();
                         const s = progress;
                         ctx.translate(width/2, height/2);
                         ctx.scale(s, s);
                         ctx.translate(-width/2, -height/2);
-                        // Force alpha fade in too
                         ctx.globalAlpha = progress;
                         drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
                         ctx.restore();
                     }
                     else if (transitionType === 'flip') {
-                         // Simple flip effect
-                         // 0-0.5: Previous flips out
-                         // 0.5-1: Next flips in
-                         
                          if (progress < 0.5) {
-                             // Draw Previous shrinking width
-                             const p = progress * 2; // 0 to 1
+                             const p = progress * 2; 
                              ctx.save();
                              ctx.translate(width/2, height/2);
-                             ctx.scale(1 - p, 1); // Flip horizontal squeeze
+                             ctx.scale(1 - p, 1);
                              ctx.translate(-width/2, -height/2);
                              ctx.drawImage(previousFrameCanvas!, 0, 0);
                              ctx.restore();
                          } else {
-                             // Draw Next growing width
-                             const p = (progress - 0.5) * 2; // 0 to 1
+                             const p = (progress - 0.5) * 2; 
                              ctx.save();
                              ctx.translate(width/2, height/2);
                              ctx.scale(p, 1);
@@ -771,16 +741,13 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                          }
                     }
                     else {
-                        // Fallback
                         drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
                     }
 
                 } else {
-                    // Normal Draw
                     drawLayout(ctx, bgVisual, mainVisual, segment.text, i, scale, activeTransform);
                 }
                 
-                // Capture last frame for next transition
                 if (f === totalFrames - 1) {
                     if (!previousFrameCanvas) {
                         previousFrameCanvas = document.createElement('canvas');
@@ -806,7 +773,6 @@ export const Slideshow: React.FC<SlideshowProps> = ({
         }
 
         setExportStatus("Finalizing...");
-        
         mediaRecorder.stop();
         bgSource?.stop();
         
@@ -858,9 +824,11 @@ export const Slideshow: React.FC<SlideshowProps> = ({
   return (
     <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center animate-fade-in">
       
+      {/* Export UI Omitted for brevity - same as before */}
       {showExportModal && (
           <div className="fixed inset-0 z-[120] bg-black/80 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up">
+                  {/* ... Export Modal Content ... */}
                   <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                      <h3 className="text-lg font-bold font-comic text-gray-900 flex items-center gap-2">
                         <Film className="w-5 h-5" /> Export Video
@@ -871,199 +839,65 @@ export const Slideshow: React.FC<SlideshowProps> = ({
                       <div>
                           <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Resolution</label>
                           <div className="grid grid-cols-2 gap-3">
-                              <button 
-                                onClick={() => setExportConfig({...exportConfig, resolution: '720p'})}
-                                className={`py-3 px-4 rounded-xl border text-sm font-bold transition-all ${exportConfig.resolution === '720p' ? 'bg-brand-50 border-brand-500 text-brand-700 ring-2 ring-brand-100' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                              >
-                                  720p (HD)
-                                  <span className="block text-[10px] font-normal opacity-70 mt-1">Faster Render</span>
-                              </button>
-                              <button 
-                                onClick={() => setExportConfig({...exportConfig, resolution: '1080p'})}
-                                className={`py-3 px-4 rounded-xl border text-sm font-bold transition-all ${exportConfig.resolution === '1080p' ? 'bg-brand-50 border-brand-500 text-brand-700 ring-2 ring-brand-100' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                              >
-                                  1080p (FHD)
-                                  <span className="block text-[10px] font-normal opacity-70 mt-1">Best Quality</span>
-                              </button>
+                              <button onClick={() => setExportConfig({...exportConfig, resolution: '720p'})} className={`py-3 px-4 rounded-xl border text-sm font-bold transition-all ${exportConfig.resolution === '720p' ? 'bg-brand-50 border-brand-500 text-brand-700 ring-2 ring-brand-100' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>720p (HD)<span className="block text-[10px] font-normal opacity-70 mt-1">Faster Render</span></button>
+                              <button onClick={() => setExportConfig({...exportConfig, resolution: '1080p'})} className={`py-3 px-4 rounded-xl border text-sm font-bold transition-all ${exportConfig.resolution === '1080p' ? 'bg-brand-50 border-brand-500 text-brand-700 ring-2 ring-brand-100' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>1080p (FHD)<span className="block text-[10px] font-normal opacity-70 mt-1">Best Quality</span></button>
                           </div>
                       </div>
-
                       <div>
                           <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Quality & Compression</label>
-                          <select 
-                            value={exportConfig.quality}
-                            onChange={(e: any) => setExportConfig({...exportConfig, quality: e.target.value})}
-                            className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white focus:border-brand-500 outline-none text-sm font-medium"
-                          >
-                              <option value="high">High (Large File)</option>
-                              <option value="balanced">Balanced (Recommended)</option>
-                              <option value="low">Low (Small File)</option>
-                          </select>
+                          <select value={exportConfig.quality} onChange={(e: any) => setExportConfig({...exportConfig, quality: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white focus:border-brand-500 outline-none text-sm font-medium"><option value="high">High (Large File)</option><option value="balanced">Balanced (Recommended)</option><option value="low">Low (Small File)</option></select>
                       </div>
-
                       <div>
                           <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Frame Rate</label>
-                          <div className="flex gap-3">
-                             {[30, 60].map(fps => (
-                                 <button
-                                    key={fps}
-                                    onClick={() => setExportConfig({...exportConfig, fps: fps as any})}
-                                    className={`flex-1 py-2 rounded-lg border text-xs font-bold transition-all ${exportConfig.fps === fps ? 'bg-brand-50 border-brand-500 text-brand-700' : 'border-gray-200 text-gray-600'}`}
-                                 >
-                                     {fps} FPS
-                                 </button>
-                             ))}
-                          </div>
+                          <div className="flex gap-3">{[30, 60].map(fps => (<button key={fps} onClick={() => setExportConfig({...exportConfig, fps: fps as any})} className={`flex-1 py-2 rounded-lg border text-xs font-bold transition-all ${exportConfig.fps === fps ? 'bg-brand-50 border-brand-500 text-brand-700' : 'border-gray-200 text-gray-600'}`}>{fps} FPS</button>))}</div>
                       </div>
                   </div>
-                  <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end">
-                      <Button onClick={handleStartExport} className="shadow-lg shadow-brand-500/20">
-                          Start Export
-                      </Button>
-                  </div>
+                  <div className="p-4 bg-gray-50 border-t border-gray-100 flex justify-end"><Button onClick={handleStartExport} className="shadow-lg shadow-brand-500/20">Start Export</Button></div>
               </div>
           </div>
       )}
 
-      {isExporting && (
-        <div className="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center text-white">
-            <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden mb-4 border border-gray-700">
-                <div className="h-full bg-brand-500 transition-all duration-100" style={{ width: `${exportProgress}%` }}></div>
-            </div>
-            <p className="font-bold text-xl animate-pulse text-brand-300">Rendering Video... {exportProgress}%</p>
-            <p className="text-sm text-gray-400 mt-2">{exportStatus}</p>
-        </div>
-      )}
+      {isExporting && (<div className="absolute inset-0 z-50 bg-black/90 flex flex-col items-center justify-center text-white"><div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden mb-4 border border-gray-700"><div className="h-full bg-brand-500 transition-all duration-100" style={{ width: `${exportProgress}%` }}></div></div><p className="font-bold text-xl animate-pulse text-brand-300">Rendering Video... {exportProgress}%</p><p className="text-sm text-gray-400 mt-2">{exportStatus}</p></div>)}
 
       {!isExporting && !showExportModal && (
       <div className="absolute top-4 right-4 z-20 flex gap-2">
-         <Button 
-            variant="secondary" 
-            onClick={() => setShowExportModal(true)} 
-            disabled={isExporting}
-            className="!px-4 !py-2 rounded-full opacity-80 hover:opacity-100 bg-brand-500 hover:bg-brand-600 border-0 text-white flex gap-2"
-         >
-            <Video className="w-5 h-5" /> <span className="hidden md:inline">Export Video</span>
-         </Button>
-
-         <Button variant="secondary" onClick={() => setIsMuted(!isMuted)} className="!p-3 rounded-full opacity-80 hover:opacity-100 bg-white/10 hover:bg-white/20 backdrop-blur-md border-0">
-            {isMuted ? <VolumeX className="w-6 h-6 text-white" /> : <Volume2 className="w-6 h-6 text-white" />}
-         </Button>
-         <Button variant="secondary" onClick={onClose} className="!p-3 rounded-full opacity-80 hover:opacity-100 bg-white/10 hover:bg-white/20 backdrop-blur-md border-0">
-           <X className="w-6 h-6 text-white" />
-         </Button>
+         <Button variant="secondary" onClick={() => setShowExportModal(true)} disabled={isExporting} className="!px-4 !py-2 rounded-full opacity-80 hover:opacity-100 bg-brand-500 hover:bg-brand-600 border-0 text-white flex gap-2"><Video className="w-5 h-5" /> <span className="hidden md:inline">Export Video</span></Button>
+         <Button variant="secondary" onClick={() => setIsMuted(!isMuted)} className="!p-3 rounded-full opacity-80 hover:opacity-100 bg-white/10 hover:bg-white/20 backdrop-blur-md border-0">{isMuted ? <VolumeX className="w-6 h-6 text-white" /> : <Volume2 className="w-6 h-6 text-white" />}</Button>
+         <Button variant="secondary" onClick={onClose} className="!p-3 rounded-full opacity-80 hover:opacity-100 bg-white/10 hover:bg-white/20 backdrop-blur-md border-0"><X className="w-6 h-6 text-white" /></Button>
       </div>
       )}
 
       <div key={currentSegment.id} className={`w-full h-full relative flex items-center justify-center overflow-hidden ${transitionClass}`}>
-        
-        {!currentSegment.videoUrl && images.map((img, idx) => (
-             <div 
-                key={`${currentSegment.id}-img-${idx}`}
-                className={`absolute inset-0 bg-cover bg-center transition-all duration-[1500ms] ${idx === innerImageIndex ? 'opacity-40 blur-2xl scale-110' : 'opacity-0 scale-100'}`}
-                style={{ backgroundImage: `url(${img})` }}
-             />
-        ))}
-
-        {currentSegment.videoUrl && (
-            <video 
-                src={currentSegment.videoUrl} 
-                className="absolute inset-0 w-full h-full object-cover opacity-30 blur-xl scale-110" 
-                style={{ filter: currentSegment.videoConfig?.filter }}
-                autoPlay 
-                loop 
-                muted
-            />
-        )}
-
+        {!currentSegment.videoUrl && images.map((img, idx) => (<div key={`${currentSegment.id}-img-${idx}`} className={`absolute inset-0 bg-cover bg-center transition-all duration-[1500ms] ${idx === innerImageIndex ? 'opacity-40 blur-2xl scale-110' : 'opacity-0 scale-100'}`} style={{ backgroundImage: `url(${img})` }} />))}
+        {currentSegment.videoUrl && (<video src={currentSegment.videoUrl} className="absolute inset-0 w-full h-full object-cover opacity-30 blur-xl scale-110" style={{ filter: currentSegment.videoConfig?.filter }} autoPlay loop muted />)}
         <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/40 z-0 pointer-events-none"></div>
 
         <div className="relative z-10 w-full max-w-7xl h-full flex flex-col md:flex-row items-center justify-center p-8 gap-8 md:gap-16">
             <div className="flex-1 w-full max-h-[40vh] md:max-h-[80vh] flex items-center justify-center order-1 md:order-1">
                  {currentSegment.videoUrl ? (
-                     <div className="relative rounded-2xl shadow-2xl border-4 border-white/10 overflow-hidden w-full h-full max-w-full flex items-center bg-black">
-                         <video 
-                            ref={videoRef}
-                            src={currentSegment.videoUrl} 
-                            className="w-full h-full object-contain"
-                            style={{ filter: currentSegment.videoConfig?.filter }}
-                            autoPlay
-                            loop
-                            muted={isMuted}
-                         />
-                     </div>
+                     <div className="relative rounded-2xl shadow-2xl border-4 border-white/10 overflow-hidden w-full h-full max-w-full flex items-center bg-black"><video ref={videoRef} src={currentSegment.videoUrl} className="w-full h-full object-contain" style={{ filter: currentSegment.videoConfig?.filter }} autoPlay loop muted={isMuted} /></div>
                  ) : activeImage ? (
-                    <div className="relative rounded-2xl shadow-2xl border-4 border-white/10 overflow-hidden w-auto h-auto max-h-full max-w-full">
-                        {images.map((img, idx) => (
-                             <img 
-                                key={idx}
-                                src={img} 
-                                alt="Slide visual" 
-                                className={`max-h-full max-w-full object-contain animate-ken-burns origin-center absolute inset-0 m-auto transition-opacity duration-1000 ${idx === innerImageIndex ? 'opacity-100 relative' : 'opacity-0'}`}
-                            />
-                        ))}
-                    </div>
+                    <div className="relative rounded-2xl shadow-2xl border-4 border-white/10 overflow-hidden w-auto h-auto max-h-full max-w-full">{images.map((img, idx) => (<img key={idx} src={img} alt="Slide visual" className={`max-h-full max-w-full object-contain animate-ken-burns origin-center absolute inset-0 m-auto transition-opacity duration-1000 ${idx === innerImageIndex ? 'opacity-100 relative' : 'opacity-0'}`} />))}</div>
                  ) : (
-                    <div className="w-full aspect-video max-w-2xl bg-gray-800/50 rounded-2xl flex items-center justify-center text-white/50 border border-white/10">
-                        <span className="flex items-center gap-2"><div className="animate-pulse w-2 h-2 bg-white rounded-full"></div> Visual not yet generated</span>
-                    </div>
+                    <div className="w-full aspect-video max-w-2xl bg-gray-800/50 rounded-2xl flex items-center justify-center text-white/50 border border-white/10"><span className="flex items-center gap-2"><div className="animate-pulse w-2 h-2 bg-white rounded-full"></div> Visual not yet generated</span></div>
                  )}
             </div>
 
             <div className="flex-1 w-full md:w-auto order-2 md:order-2 flex flex-col justify-center max-w-xl z-20 min-h-0">
                  <div key={`text-${currentSegment.id}`} className="flex flex-col max-h-[40vh] md:max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-                    <div className="inline-flex items-center gap-2 mb-4 px-4 py-1 rounded-full bg-brand-500/20 border border-brand-500/40 text-brand-300 font-bold uppercase tracking-widest text-xs md:text-sm animate-fade-in w-fit">
-                        Scene {currentIndex + 1}
-                    </div>
-                    
-                    <div 
-                        className={`${getSizeClass()} text-white drop-shadow-md`}
-                        style={{ fontFamily: presentationConfig.fontFamily }}
-                    >
-                         <AnimatedText 
-                            text={currentSegment.text} 
-                            type={currentSegment.animation || 'slide-up'} 
-                            speed={presentationConfig.animationSpeed}
-                        />
-                    </div>
-
-                    {currentSegment.audioUrl && (
-                        <div className="mt-4 flex items-center gap-2 text-white/50 text-sm animate-fade-in" style={{ animationDelay: '500ms' }}>
-                            <Volume2 className="w-4 h-4" /> Narration active
-                        </div>
-                    )}
+                    <div className="inline-flex items-center gap-2 mb-4 px-4 py-1 rounded-full bg-brand-500/20 border border-brand-500/40 text-brand-300 font-bold uppercase tracking-widest text-xs md:text-sm animate-fade-in w-fit">Scene {currentIndex + 1}</div>
+                    <div className={`${getSizeClass()} text-white drop-shadow-md`} style={{ fontFamily: presentationConfig.fontFamily }}><AnimatedText text={currentSegment.text} type={currentSegment.animation || 'slide-up'} speed={presentationConfig.animationSpeed} /></div>
+                    {currentSegment.audioUrl && (<div className="mt-4 flex items-center gap-2 text-white/50 text-sm animate-fade-in" style={{ animationDelay: '500ms' }}><Volume2 className="w-4 h-4" /> Narration active</div>)}
                 </div>
             </div>
         </div>
       </div>
 
       <div className="absolute bottom-6 left-0 w-full flex items-center justify-center gap-8 z-30 pb-safe">
-        <button 
-            onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))}
-            disabled={currentIndex === 0}
-            className="p-4 rounded-full bg-white/10 hover:bg-white/20 text-white disabled:opacity-30 transition-all backdrop-blur-sm group"
-        >
-            <ChevronLeft className="w-8 h-8 group-hover:-translate-x-1 transition-transform" />
-        </button>
-
-        <div className="flex flex-col items-center gap-3">
-             <button 
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="p-5 rounded-full bg-brand-500 hover:bg-brand-400 text-white shadow-lg shadow-brand-500/50 transition-all transform hover:scale-110 active:scale-95 flex items-center justify-center"
-            >
-                {isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current ml-1" />}
-            </button>
-        </div>
-
-        <button 
-            onClick={() => setCurrentIndex(prev => Math.min(segments.length - 1, prev + 1))}
-            disabled={currentIndex === segments.length - 1}
-            className="p-4 rounded-full bg-white/10 hover:bg-white/20 text-white disabled:opacity-30 transition-all backdrop-blur-sm group"
-        >
-            <ChevronRight className="w-8 h-8 group-hover:translate-x-1 transition-transform" />
-        </button>
+        <button onClick={() => setCurrentIndex(prev => Math.max(0, prev - 1))} disabled={currentIndex === 0} className="p-4 rounded-full bg-white/10 hover:bg-white/20 text-white disabled:opacity-30 transition-all backdrop-blur-sm group"><ChevronLeft className="w-8 h-8 group-hover:-translate-x-1 transition-transform" /></button>
+        <div className="flex flex-col items-center gap-3"><button onClick={() => setIsPlaying(!isPlaying)} className="p-5 rounded-full bg-brand-500 hover:bg-brand-400 text-white shadow-lg shadow-brand-500/50 transition-all transform hover:scale-110 active:scale-95 flex items-center justify-center">{isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current ml-0.5" />}</button></div>
+        <button onClick={() => setCurrentIndex(prev => Math.min(segments.length - 1, prev + 1))} disabled={currentIndex === segments.length - 1} className="p-4 rounded-full bg-white/10 hover:bg-white/20 text-white disabled:opacity-30 transition-all backdrop-blur-sm group"><ChevronRight className="w-8 h-8 group-hover:translate-x-1 transition-transform" /></button>
       </div>
-      
       <div className="absolute bottom-0 left-0 h-1 bg-brand-500 transition-all duration-300 z-30" style={{ width: `${((currentIndex + 1) / segments.length) * 100}%` }}></div>
     </div>
   );

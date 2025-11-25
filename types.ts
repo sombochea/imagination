@@ -38,6 +38,8 @@ export interface OverlayElement {
     width?: number; // %
     height?: number; // %
     visible?: boolean; // New: Toggle visibility
+    startTime?: number; // New: Start visibility time (seconds)
+    endTime?: number; // New: End visibility time (seconds)
     style?: {
         color?: string;
         fontSize?: number;
