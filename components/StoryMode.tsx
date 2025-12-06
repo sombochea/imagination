@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { generateStorySegments, generateProImage, generateSpeech, generateVideo } from '../services/gemini';
 import { saveStoryToDB, getStoriesFromDB, deleteStoryFromDB, exportStoryToJson, importStoryFromJson, saveDraft, getDraft } from '../services/storage';
+import { generateStoryPDF } from '../services/pdf';
 import { StorySegment, ImageSize, AspectRatio, Language, SavedStory, TextAnimation, Character, SceneTransition, VideoConfig, PresentationConfig } from '../types';
 import { Button } from './Button';
-import { BookOpen, Image as ImageIcon, Sparkles, RefreshCw, PlayCircle, Save, FolderOpen, Trash2, X, Clock, Volume2, Mic, Music, Upload, Video, Plus, Download, FileUp, Settings2, CheckCircle2, UserPlus, Users, GripVertical, LayoutTemplate, Camera, Film, ArrowLeft, ArrowRight, Wand2, Calendar, MoreVertical, Edit3, Speech, UserCog, Cloud, CloudOff, Scissors, Sliders, FileText, ChevronDown, Play, Type, Gauge, MoreHorizontal, FileBox, Disc, MonitorPlay, Zap, Move } from 'lucide-react';
+import { BookOpen, Image as ImageIcon, Sparkles, RefreshCw, PlayCircle, Save, FolderOpen, Trash2, X, Clock, Volume2, Mic, Music, Upload, Video, Plus, Download, FileUp, Settings2, CheckCircle2, UserPlus, Users, GripVertical, LayoutTemplate, Camera, Film, ArrowLeft, ArrowRight, Wand2, Calendar, MoreVertical, Edit3, Speech, UserCog, Cloud, CloudOff, Scissors, Sliders, FileText, ChevronDown, Play, Type, Gauge, MoreHorizontal, FileBox, Disc, MonitorPlay, Zap, Move, Pause } from 'lucide-react';
 import { Slideshow } from './Slideshow';
 import { VideoStudio } from './VideoStudio';
 
@@ -375,19 +375,172 @@ const VideoEditorModal: React.FC<{
     );
 };
 
-export const StoryMode: React.FC = () => {
-  const [view, setView] = useState<ViewMode>('dashboard');
-  const [showGeneratorModal, setShowGeneratorModal] = useState(false);
-  const [generationMode, setGenerationMode] = useState<GenerationMode>('topic');
-  const [customStoryText, setCustomStoryText] = useState('');
+// Split into Dashboard and Editor for Props-based Navigation
+
+interface StoryDashboardProps {
+    onNavigate: (view: 'editor', storyId?: string) => void;
+}
+
+export const StoryDashboard: React.FC<StoryDashboardProps> = ({ onNavigate }) => {
+    const [showGeneratorModal, setShowGeneratorModal] = useState(false);
+    const [generationMode, setGenerationMode] = useState<GenerationMode>('topic');
+    const [customStoryText, setCustomStoryText] = useState('');
+    const [topic, setTopic] = useState('');
+    const [language, setLanguage] = useState<Language>('English');
+    const [characters, setCharacters] = useState<Character[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [savedStories, setSavedStories] = useState<SavedStory[]>([]);
+    const fileImportRef = useRef<HTMLInputElement>(null);
+    const [newCharName, setNewCharName] = useState('');
+    const [newCharDesc, setNewCharDesc] = useState('');
+    const [newCharVoice, setNewCharVoice] = useState('Puck');
+    const [showCharInput, setShowCharInput] = useState(false);
+
+    useEffect(() => {
+        loadSavedStories();
+    }, []);
+
+    const loadSavedStories = async () => {
+        try {
+            const stories = await getStoriesFromDB();
+            setSavedStories(stories.sort((a, b) => b.timestamp - a.timestamp));
+        } catch (e) { console.error("Failed to load stories from DB", e); }
+    };
+
+    const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        importStoryFromJson(file).then(async (story) => {
+            // Save imported story then navigate
+            await saveStoryToDB(story);
+            alert("Project imported successfully!");
+            onNavigate('editor', story.id);
+        }).catch(err => { console.error(err); alert("Failed to import project. Please ensure the file is valid."); });
+        e.target.value = '';
+    };
+
+    const handleDeleteStory = async (id: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if(confirm("Are you sure you want to delete this story?")) { 
+            await deleteStoryFromDB(id); 
+            await loadSavedStories(); 
+        }
+    };
+
+    const openGenerator = () => {
+        setTopic(''); setCharacters([]); setLanguage('English');
+        setGenerationMode('topic'); setCustomStoryText('');
+        setShowGeneratorModal(true); setShowCharInput(true);
+    };
+
+    const handleAddCharacter = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newCharName.trim() || !newCharDesc.trim()) return;
+        const newChar: Character = { id: Date.now().toString(), name: newCharName, description: newCharDesc, voiceName: newCharVoice, voiceSpeed: 1.0, voicePitch: 0 };
+        setCharacters([...characters, newChar]);
+        setNewCharName(''); setNewCharDesc(''); setNewCharVoice('Puck');
+    };
+
+    const handleRemoveCharacter = (id: string) => { setCharacters(characters.filter(c => c.id !== id)); };
+    const handleUpdateCharacter = (id: string, field: keyof Character, value: any) => { setCharacters(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c)); };
+
+    const handleGenerateStory = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (generationMode === 'topic' && !topic.trim()) return;
+        if (generationMode === 'custom' && !customStoryText.trim()) return;
+        setIsLoading(true); setError(null);
+        if (generationMode === 'custom' && !topic) { setTopic(customStoryText.slice(0, 30) + "..."); }
+        try {
+          const isCustom = generationMode === 'custom';
+          const rawSegments = await generateStorySegments(topic, language, characters, isCustom ? customStoryText : undefined);
+          const newSegments: StorySegment[] = rawSegments.map((s, i) => ({
+            id: Date.now().toString() + i,
+            text: s.text,
+            suggestedPrompt: s.visualPrompt,
+            isGeneratingImage: false, isGeneratingAudio: false, isGeneratingVideo: false,
+            animation: 'slide-up' as TextAnimation, transition: 'fade' as SceneTransition,
+            imageUrls: [], previewIndex: 0
+          }));
+          
+          const storyId = Date.now().toString();
+          const newStory: SavedStory = {
+              id: storyId,
+              topic: topic,
+              timestamp: Date.now(),
+              segments: newSegments,
+              characters: characters,
+              language: language,
+              presentationConfig: { fontFamily: '"Comic Neue", cursive', fontSize: 'medium', animationSpeed: 'medium' }
+          };
+          
+          await saveStoryToDB(newStory);
+          setShowGeneratorModal(false);
+          onNavigate('editor', storyId);
+        } catch (err) { setError("Failed to create the story. Please try again."); } finally { setIsLoading(false); }
+    };
+
+    return (
+          <div className="max-w-7xl mx-auto pb-20">
+              <div className="flex justify-between items-center mb-10 animate-fade-in">
+                  <div><h2 className="text-4xl font-comic font-bold text-brand-900 mb-2">Your Studio</h2><p className="text-brand-700/60 font-medium">Manage your educational stories and animations</p></div>
+                  <div className="flex gap-3">
+                     <input type="file" ref={fileImportRef} onChange={handleImportFile} accept="application/json" className="hidden" />
+                     <Button variant="outline" onClick={() => fileImportRef.current?.click()}><FileUp className="w-4 h-4" /> Import</Button>
+                     <Button onClick={openGenerator} className="shadow-lg shadow-brand-500/20"><Plus className="w-4 h-4" /> New Project</Button>
+                  </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in" style={{ animationDelay: '100ms' }}>
+                  <div onClick={openGenerator} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50/30 hover:bg-brand-50 hover:border-brand-400 cursor-pointer flex flex-col items-center justify-center gap-4 group transition-all">
+                      <div className="w-14 h-14 rounded-full bg-brand-100 group-hover:bg-brand-200 text-brand-500 flex items-center justify-center transition-colors shadow-sm"><Plus className="w-6 h-6" /></div>
+                      <span className="font-comic font-bold text-brand-700">Create New Story</span>
+                  </div>
+                  {savedStories.map((story, i) => {
+                      const firstImage = story.segments.find(s => s.imageUrls && s.imageUrls.length > 0)?.imageUrls?.[0] || story.segments.find(s => s.imageUrl)?.imageUrl;
+                      return (
+                          <div key={story.id} onClick={() => onNavigate('editor', story.id)} className="group relative bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all border border-gray-100 overflow-hidden cursor-pointer flex flex-col" style={{ animationDelay: `${(i+1)*50}ms` }}>
+                              <div className="aspect-video w-full bg-gray-50 relative overflow-hidden border-b border-gray-50">{firstImage ? <img src={firstImage} alt="Thumbnail" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" /> : <div className="w-full h-full flex items-center justify-center text-brand-200 bg-brand-50/50"><ImageIcon className="w-10 h-10" /></div>}</div>
+                              <div className="p-4 flex-1 flex flex-col"><h3 className="font-bold text-gray-800 mb-1 line-clamp-1 group-hover:text-brand-600 transition-colors font-comic">{story.topic}</h3><div className="text-xs text-gray-400 flex items-center gap-3 mb-3"><span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(story.timestamp).toLocaleDateString()}</span><span className="flex items-center gap-1"><LayoutTemplate className="w-3 h-3" /> {story.segments.length} Scenes</span></div><div className="mt-auto flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200">{story.language}</span><button onClick={(e) => handleDeleteStory(story.id, e)} className="p-1.5 hover:bg-red-50 text-gray-300 hover:text-red-500 rounded-md transition-colors"><Trash2 className="w-3.5 h-3.5" /></button></div></div>
+                          </div>
+                      );
+                  })}
+              </div>
+              {showGeneratorModal && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/20 backdrop-blur-sm animate-fade-in">
+                      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
+                          <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-brand-50 to-white">
+                              <div className="flex justify-between items-start mb-1"><h2 className="text-2xl font-comic font-bold text-brand-900">Start Adventure</h2><button onClick={() => setShowGeneratorModal(false)} className="p-1 hover:bg-black/5 rounded-full transition-colors"><X className="w-5 h-5 text-gray-400" /></button></div>
+                              <p className="text-sm text-gray-500">What do you want to teach today?</p>
+                          </div>
+                          <div className="p-6 overflow-y-auto custom-scrollbar">
+                              <form onSubmit={handleGenerateStory} className="space-y-6">
+                                  <div className="flex p-1 bg-gray-100 rounded-xl border border-gray-200"><button type="button" onClick={() => setGenerationMode('topic')} className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${generationMode === 'topic' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Wand2 className="w-4 h-4" /> From Topic</button><button type="button" onClick={() => setGenerationMode('custom')} className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${generationMode === 'custom' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><FileText className="w-4 h-4" /> Custom Story</button></div>
+                                  <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">{generationMode === 'topic' ? 'Topic' : 'Title'}</label><StyledInput type="text" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={generationMode === 'topic' ? "e.g. The Water Cycle..." : "Story Title"} className="py-3 font-medium" autoFocus={generationMode === 'topic'} required />{generationMode === 'topic' && (<div className="flex flex-wrap gap-2 mt-2">{STORY_STARTERS[language]?.slice(0, 4).map((starter, i) => (<button key={i} type="button" onClick={() => setTopic(starter)} className="text-xs bg-gray-50 border border-gray-100 hover:border-brand-300 hover:bg-brand-50 text-gray-500 hover:text-brand-700 px-2 py-1 rounded-md transition-all">{starter}</button>))}</div>)}</div>
+                                  {generationMode === 'custom' && (<div className="space-y-2 animate-fade-in"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Story Content</label><StyledTextArea value={customStoryText} onChange={(e) => setCustomStoryText(e.target.value)} placeholder="Paste your story here..." className="h-32 text-sm" required /></div>)}
+                                  <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Language</label><StyledSelect value={language} onChange={(e: any) => setLanguage(e.target.value as Language)} options={[{value: 'English', label: 'English'}, {value: 'Khmer', label: 'Khmer'}]} /></div>
+                                  <div className="border border-brand-100 rounded-xl p-4 bg-brand-50/30"><div className="flex justify-between items-center cursor-pointer" onClick={() => setShowCharInput(!showCharInput)}><div className="flex items-center gap-2"><div className="bg-brand-100 p-1.5 rounded-md text-brand-600"><Users className="w-4 h-4" /></div><span className="font-bold text-sm text-gray-800">Characters ({characters.length})</span></div><ChevronDown className={`w-4 h-4 text-gray-400 transform transition-transform ${showCharInput ? 'rotate-180' : ''}`} /></div>{showCharInput && (<div className="space-y-4 mt-4 animate-fade-in pt-4 border-t border-brand-100/50"><AddCharacterForm name={newCharName} setName={setNewCharName} desc={newCharDesc} setDesc={setNewCharDesc} voice={newCharVoice} setVoice={setNewCharVoice} onAdd={handleAddCharacter} />{characters.length > 0 && <CharacterList characters={characters} onRemove={handleRemoveCharacter} onUpdate={handleUpdateCharacter} onGenerateImage={() => {}} allowEdit={true} />}</div>)}</div>
+                                  <Button type="submit" isLoading={isLoading} className="w-full py-3.5 text-base shadow-lg shadow-brand-500/20">{generationMode === 'topic' ? <Wand2 className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />} {generationMode === 'topic' ? 'Generate Story' : 'Create Scenes'}</Button>
+                                  {error && <p className="text-red-500 text-center text-xs bg-red-50 p-2 rounded-lg border border-red-100">{error}</p>}
+                              </form>
+                          </div>
+                      </div>
+                  </div>
+              )}
+          </div>
+    );
+};
+
+// Editor Component Props
+interface StoryEditorProps {
+    storyId: string;
+    onNavigate: (view: 'dashboard') => void;
+}
+
+export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate }) => {
   const [topic, setTopic] = useState('');
   const [language, setLanguage] = useState<Language>('English');
   const [segments, setSegments] = useState<StorySegment[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [draftRestored, setDraftRestored] = useState(false);
-  const [currentStoryId, setCurrentStoryId] = useState<string | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [presentationConfig, setPresentationConfig] = useState<PresentationConfig>({
       fontFamily: '"Comic Neue", cursive',
@@ -396,11 +549,10 @@ export const StoryMode: React.FC = () => {
   });
   const [showPresentationSettings, setShowPresentationSettings] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [showCharacterModal, setShowCharacterModal] = useState(false);
   const [newCharName, setNewCharName] = useState('');
   const [newCharDesc, setNewCharDesc] = useState('');
   const [newCharVoice, setNewCharVoice] = useState('Puck');
-  const [showCharInput, setShowCharInput] = useState(false);
-  const [showCharacterModal, setShowCharacterModal] = useState(false);
   const [editingVideoId, setEditingVideoId] = useState<string | null>(null);
   const [showVideoStudio, setShowVideoStudio] = useState(false);
   const [showSlideshow, setShowSlideshow] = useState(false);
@@ -408,26 +560,33 @@ export const StoryMode: React.FC = () => {
   const [backgroundMusic, setBackgroundMusic] = useState<string | null>(null);
   const [showMusicModal, setShowMusicModal] = useState(false);
   const musicInputRef = useRef<HTMLInputElement>(null);
-  const [savedStories, setSavedStories] = useState<SavedStory[]>([]);
-  const fileImportRef = useRef<HTMLInputElement>(null);
-  const stateRef = useRef({ topic, segments, language, backgroundMusic, currentStoryId, characters, view, presentationConfig });
+  const stateRef = useRef({ topic, segments, language, backgroundMusic, storyId, characters, presentationConfig });
   
+  // Audio Playback
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+
   // Audio preview state for Music Modal
   const [playingSampleUrl, setPlayingSampleUrl] = useState<string | null>(null);
   const sampleAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-      stateRef.current = { topic, segments, language, backgroundMusic, currentStoryId, characters, view, presentationConfig };
-  }, [topic, segments, language, backgroundMusic, currentStoryId, characters, view, presentationConfig]);
+      stateRef.current = { topic, segments, language, backgroundMusic, storyId, characters, presentationConfig };
+  }, [topic, segments, language, backgroundMusic, storyId, characters, presentationConfig]);
 
   useEffect(() => {
-    loadSavedStories();
-    checkAndRestoreDraft();
-  }, []);
+      if (storyId) {
+          getStoriesFromDB().then(stories => {
+              const story = stories.find(s => s.id === storyId);
+              if (story) handleLoadStory(story);
+              else onNavigate('dashboard');
+          });
+      }
+  }, [storyId, onNavigate]);
 
   useEffect(() => {
     const autoSaveInterval = setInterval(async () => {
-        if (stateRef.current.view === 'editor' && (stateRef.current.segments.length > 0 || stateRef.current.topic.length > 5)) {
+        if (stateRef.current.segments.length > 0 || stateRef.current.topic.length > 5) {
              setSaveStatus('saving');
              const cleanSegments = stateRef.current.segments.map(({ audioUrl, videoUrl, isGeneratingAudio, isGeneratingVideo, isGeneratingImage, ...rest }) => ({
                 ...rest,
@@ -436,7 +595,7 @@ export const StoryMode: React.FC = () => {
                 isGeneratingImage: false
             }));
             const draftStory: any = {
-                id: stateRef.current.currentStoryId || 'draft',
+                id: stateRef.current.storyId || 'draft',
                 topic: stateRef.current.topic,
                 timestamp: Date.now(),
                 segments: cleanSegments,
@@ -446,7 +605,12 @@ export const StoryMode: React.FC = () => {
                 presentationConfig: stateRef.current.presentationConfig
             };
             try {
-                await saveDraft(draftStory);
+                // If it's a real story, save to main DB, else draft
+                if (stateRef.current.storyId && stateRef.current.storyId !== 'draft') {
+                    await saveStoryToDB(draftStory);
+                } else {
+                    await saveDraft(draftStory);
+                }
                 setSaveStatus('saved');
             } catch (e) {
                 console.error("Auto-save failed", e);
@@ -457,28 +621,54 @@ export const StoryMode: React.FC = () => {
     return () => clearInterval(autoSaveInterval);
   }, []);
 
-  const checkAndRestoreDraft = async () => {
-      try {
-          const draft = await getDraft();
-          if (draft && draft.segments.length > 0 && !currentStoryId) {
-             // Optional: Ask user or just restore if they go to dashboard
-          }
-      } catch (e) { console.error("Failed to restore draft", e); }
-  };
+  const handleLoadStory = (story: SavedStory) => {
+    setTopic(story.topic);
+    setCharacters(story.characters || []); 
+    
+    const hydratedSegments = story.segments.map(s => {
+        let audioUrl = undefined;
+        if (s.audioData) {
+            try {
+                const base64Clean = s.audioData.replace(/^data:audio\/[a-z]+;base64,/, "").replace(/\s/g, '');
+                const binaryString = atob(base64Clean);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+                audioUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+            } catch (e) { console.warn("Failed to hydrate audio", s.id, e); }
+        }
 
-  const loadSavedStories = async () => {
-    try {
-        const stories = await getStoriesFromDB();
-        setSavedStories(stories.sort((a, b) => b.timestamp - a.timestamp));
-    } catch (e) { console.error("Failed to load stories from DB", e); }
-  };
+        let videoUrl = undefined;
+        if (s.videoData) {
+             try {
+                const base64Clean = s.videoData.replace(/^data:video\/[a-z]+;base64,/, "").replace(/\s/g, '');
+                const binaryString = atob(base64Clean);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+                videoUrl = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
+             } catch(e) { console.warn("Failed to hydrate video", s.id, e); }
+        }
+        
+        let images = s.imageUrls || [];
+        if (images.length === 0 && s.imageUrl) images = [s.imageUrl];
 
-  const handleBackToDashboard = () => { setView('dashboard'); loadSavedStories(); };
+        return {
+            ...s, 
+            audioUrl,
+            videoUrl,
+            imageUrls: images, 
+            isGeneratingImage: false, 
+            isGeneratingAudio: false, 
+            isGeneratingVideo: false,
+            animation: s.animation || 'slide-up', 
+            transition: s.transition || 'fade', 
+            previewIndex: 0
+        };
+    });
 
-  const openGenerator = () => {
-      setTopic(''); setSegments([]); setCharacters([]); setLanguage('English'); setBackgroundMusic(null); setCurrentStoryId(null);
-      setGenerationMode('topic'); setCustomStoryText(''); setPresentationConfig({ fontFamily: '"Comic Neue", cursive', fontSize: 'medium', animationSpeed: 'medium' });
-      setShowGeneratorModal(true); setShowCharInput(true);
+    setSegments(hydratedSegments);
+    setLanguage(story.language);
+    setBackgroundMusic(story.backgroundMusic || null);
+    if(story.presentationConfig) setPresentationConfig(story.presentationConfig);
   };
 
   const handleAddCharacter = (e: React.FormEvent) => {
@@ -502,28 +692,6 @@ export const StoryMode: React.FC = () => {
         if (imageUrl) { setCharacters(prev => prev.map(c => c.id === charId ? { ...c, imageUrl, isGenerating: false } : c)); } 
         else { throw new Error("No image returned"); }
     } catch (e) { console.error(e); alert("Failed to generate character image."); setCharacters(prev => prev.map(c => c.id === charId ? { ...c, isGenerating: false } : c)); }
-  };
-
-  const handleGenerateStory = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (generationMode === 'topic' && !topic.trim()) return;
-    if (generationMode === 'custom' && !customStoryText.trim()) return;
-    setIsLoading(true); setError(null);
-    if (generationMode === 'custom' && !topic) { setTopic(customStoryText.slice(0, 30) + "..."); }
-    try {
-      const isCustom = generationMode === 'custom';
-      const rawSegments = await generateStorySegments(topic, language, characters, isCustom ? customStoryText : undefined);
-      const newSegments = rawSegments.map((s, i) => ({
-        id: Date.now().toString() + i,
-        text: s.text,
-        suggestedPrompt: s.visualPrompt,
-        isGeneratingImage: false, isGeneratingAudio: false, isGeneratingVideo: false,
-        animation: 'slide-up' as TextAnimation, transition: 'fade' as SceneTransition,
-        imageUrls: [], previewIndex: 0
-      }));
-      setSegments(newSegments); setCurrentStoryId(Date.now().toString());
-      setShowGeneratorModal(false); setView('editor');
-    } catch (err) { setError("Failed to create the story. Please try again."); } finally { setIsLoading(false); }
   };
 
   const handleAddSegment = () => {
@@ -622,6 +790,29 @@ export const StoryMode: React.FC = () => {
     }
   };
 
+  const toggleSegmentAudio = (segmentId: string, audioUrl?: string) => {
+      if (!audioUrl) return;
+
+      if (playingAudioId === segmentId) {
+          // Pause logic
+          if (activeAudioRef.current) {
+              activeAudioRef.current.pause();
+              setPlayingAudioId(null);
+          }
+      } else {
+          // Play logic
+          if (activeAudioRef.current) {
+              activeAudioRef.current.pause();
+              activeAudioRef.current = null;
+          }
+          const audio = new Audio(audioUrl);
+          audio.onended = () => setPlayingAudioId(null);
+          activeAudioRef.current = audio;
+          audio.play().catch(e => console.error(e));
+          setPlayingAudioId(segmentId);
+      }
+  };
+
   const handleGenerateVideoForSegment = async (id: string) => {
       const segment = segments.find(s => s.id === id);
       if (!segment) return;
@@ -652,13 +843,11 @@ export const StoryMode: React.FC = () => {
   };
 
   const handleSelectSampleMusic = async (url: string) => {
-    // Stop any playing preview first
     if (sampleAudioRef.current) {
         sampleAudioRef.current.pause();
         sampleAudioRef.current = null;
     }
     setPlayingSampleUrl(null);
-    
     try {
         const resp = await fetch(url);
         const blob = await resp.blob();
@@ -670,13 +859,10 @@ export const StoryMode: React.FC = () => {
 
   const toggleSamplePreview = (url: string) => {
     if (playingSampleUrl === url) {
-        // Stop
         sampleAudioRef.current?.pause();
         setPlayingSampleUrl(null);
     } else {
-        // Stop prev
         sampleAudioRef.current?.pause();
-        // Play new
         sampleAudioRef.current = new Audio(url);
         sampleAudioRef.current.play().catch(e => console.error("Playback failed", e));
         sampleAudioRef.current.onended = () => setPlayingSampleUrl(null);
@@ -687,16 +873,12 @@ export const StoryMode: React.FC = () => {
   const handleSaveStory = async () => {
     if (segments.length === 0) return;
     setSaveStatus('saving');
-    // Ensure we strip session URLs from saved object
     const cleanSegments = segments.map(({ audioUrl, videoUrl, isGeneratingAudio, isGeneratingVideo, isGeneratingImage, ...rest }) => ({
         ...rest, isGeneratingAudio: false, isGeneratingVideo: false, isGeneratingImage: false
     }));
-    const idToUse = currentStoryId || Date.now().toString();
-    const newStory: SavedStory = { id: idToUse, topic, timestamp: Date.now(), segments: cleanSegments, characters, language, backgroundMusic: backgroundMusic || undefined, presentationConfig };
+    const newStory: SavedStory = { id: storyId || Date.now().toString(), topic, timestamp: Date.now(), segments: cleanSegments, characters, language, backgroundMusic: backgroundMusic || undefined, presentationConfig };
     try {
         await saveStoryToDB(newStory);
-        setCurrentStoryId(idToUse);
-        await loadSavedStories();
         setSaveStatus('saved');
         alert("Success! Your project has been saved.");
     } catch (e) { console.error(e); setSaveStatus('error'); alert("Failed to save story. Please try again."); }
@@ -704,82 +886,24 @@ export const StoryMode: React.FC = () => {
 
   const handleExportToFile = () => {
     if (segments.length === 0) return;
-    // Explicitly clean URLs for export to avoid stale blob refs
     const cleanSegments = segments.map(({ audioUrl, videoUrl, isGeneratingAudio, isGeneratingVideo, isGeneratingImage, ...rest }) => ({
-        ...rest, 
-        isGeneratingAudio: false, 
-        isGeneratingVideo: false, 
-        isGeneratingImage: false
+        ...rest, isGeneratingAudio: false, isGeneratingVideo: false, isGeneratingImage: false
     }));
-    const storyToExport: SavedStory = { id: currentStoryId || Date.now().toString(), topic, timestamp: Date.now(), segments: cleanSegments, characters, language, backgroundMusic: backgroundMusic || undefined, presentationConfig };
+    const storyToExport: SavedStory = { id: storyId || Date.now().toString(), topic, timestamp: Date.now(), segments: cleanSegments, characters, language, backgroundMusic: backgroundMusic || undefined, presentationConfig };
     exportStoryToJson(storyToExport);
   };
-
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    importStoryFromJson(file).then(story => { handleLoadStory(story); alert("Project imported successfully!"); }).catch(err => { console.error(err); alert("Failed to import project. Please ensure the file is valid."); });
-    e.target.value = '';
-  };
-
-  const handleLoadStory = (story: SavedStory) => {
-    setTopic(story.topic);
-    setCharacters(story.characters || []); 
-    
-    const hydratedSegments = story.segments.map(s => {
-        // ALWAYS recreate URLs from data, ignoring any potentially stale 'audioUrl' or 'videoUrl' in the source
-        let audioUrl = undefined;
-        if (s.audioData) {
-            try {
-                // Robust Base64 cleaning: remove data URI scheme if present, remove newlines/spaces
-                const base64Clean = s.audioData.replace(/^data:audio\/[a-z]+;base64,/, "").replace(/\s/g, '');
-                const binaryString = atob(base64Clean);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-                audioUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
-            } catch (e) { console.warn("Failed to hydrate audio", s.id, e); }
-        }
-
-        let videoUrl = undefined;
-        if (s.videoData) {
-             try {
-                const base64Clean = s.videoData.replace(/^data:video\/[a-z]+;base64,/, "").replace(/\s/g, '');
-                const binaryString = atob(base64Clean);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-                // Veo generates MP4 usually, but we check if we stored mimeType. For now default to mp4 as safer than webm for broad support
-                videoUrl = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
-             } catch(e) { console.warn("Failed to hydrate video", s.id, e); }
-        }
-        
-        let images = s.imageUrls || [];
-        if (images.length === 0 && s.imageUrl) images = [s.imageUrl];
-
-        return {
-            ...s, 
-            audioUrl, // Fresh URL or undefined
-            videoUrl, // Fresh URL or undefined
-            imageUrls: images, 
-            isGeneratingImage: false, 
-            isGeneratingAudio: false, 
-            isGeneratingVideo: false,
-            animation: s.animation || 'slide-up', 
-            transition: s.transition || 'fade', 
-            previewIndex: 0
-        };
-    });
-
-    setSegments(hydratedSegments);
-    setLanguage(story.language);
-    setBackgroundMusic(story.backgroundMusic || null);
-    setCurrentStoryId(story.id); 
-    if(story.presentationConfig) setPresentationConfig(story.presentationConfig);
-    setView('editor');
-  };
-
-  const handleDeleteStory = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if(confirm("Are you sure you want to delete this story?")) { await deleteStoryFromDB(id); await loadSavedStories(); if (id === currentStoryId) setCurrentStoryId(null); }
+  
+  const handleExportPDF = async () => {
+    setSaveStatus('saving');
+    try {
+        await generateStoryPDF(topic, segments, presentationConfig);
+        alert("PDF Book downloaded successfully!");
+    } catch (e) {
+        console.error(e);
+        alert("Failed to generate PDF.");
+    } finally {
+        setSaveStatus('saved');
+    }
   };
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
@@ -802,70 +926,13 @@ export const StoryMode: React.FC = () => {
   const startPresentation = () => { setAutoExport(false); setShowSlideshow(true); };
   const startExport = () => { setAutoExport(true); setShowSlideshow(true); };
 
-  // --- JSX Renders ---
-
-  // Dashboard logic handled in return...
-  
-  if (view === 'dashboard') {
-     // ... dashboard JSX (unchanged) ...
-     return (
-          <div className="max-w-7xl mx-auto pb-20">
-              <div className="flex justify-between items-center mb-10 animate-fade-in">
-                  <div><h2 className="text-4xl font-comic font-bold text-brand-900 mb-2">Your Studio</h2><p className="text-brand-700/60 font-medium">Manage your educational stories and animations</p></div>
-                  <div className="flex gap-3">
-                     <input type="file" ref={fileImportRef} onChange={handleImportFile} accept="application/json" className="hidden" />
-                     <Button variant="outline" onClick={() => fileImportRef.current?.click()}><FileUp className="w-4 h-4" /> Import</Button>
-                     <Button onClick={openGenerator} className="shadow-lg shadow-brand-500/20"><Plus className="w-4 h-4" /> New Project</Button>
-                  </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in" style={{ animationDelay: '100ms' }}>
-                  <div onClick={openGenerator} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50/30 hover:bg-brand-50 hover:border-brand-400 cursor-pointer flex flex-col items-center justify-center gap-4 group transition-all">
-                      <div className="w-14 h-14 rounded-full bg-brand-100 group-hover:bg-brand-200 text-brand-500 flex items-center justify-center transition-colors shadow-sm"><Plus className="w-6 h-6" /></div>
-                      <span className="font-comic font-bold text-brand-700">Create New Story</span>
-                  </div>
-                  {savedStories.map((story, i) => {
-                      const firstImage = story.segments.find(s => s.imageUrls && s.imageUrls.length > 0)?.imageUrls?.[0] || story.segments.find(s => s.imageUrl)?.imageUrl;
-                      return (
-                          <div key={story.id} onClick={() => handleLoadStory(story)} className="group relative bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all border border-gray-100 overflow-hidden cursor-pointer flex flex-col" style={{ animationDelay: `${(i+1)*50}ms` }}>
-                              <div className="aspect-video w-full bg-gray-50 relative overflow-hidden border-b border-gray-50">{firstImage ? <img src={firstImage} alt="Thumbnail" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" /> : <div className="w-full h-full flex items-center justify-center text-brand-200 bg-brand-50/50"><ImageIcon className="w-10 h-10" /></div>}</div>
-                              <div className="p-4 flex-1 flex flex-col"><h3 className="font-bold text-gray-800 mb-1 line-clamp-1 group-hover:text-brand-600 transition-colors font-comic">{story.topic}</h3><div className="text-xs text-gray-400 flex items-center gap-3 mb-3"><span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(story.timestamp).toLocaleDateString()}</span><span className="flex items-center gap-1"><LayoutTemplate className="w-3 h-3" /> {story.segments.length} Scenes</span></div><div className="mt-auto flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-gray-100 text-gray-500 rounded border border-gray-200">{story.language}</span><button onClick={(e) => handleDeleteStory(story.id, e)} className="p-1.5 hover:bg-red-50 text-gray-300 hover:text-red-500 rounded-md transition-colors"><Trash2 className="w-3.5 h-3.5" /></button></div></div>
-                          </div>
-                      );
-                  })}
-              </div>
-              {showGeneratorModal && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/20 backdrop-blur-sm animate-fade-in">
-                      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
-                          <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-brand-50 to-white">
-                              <div className="flex justify-between items-start mb-1"><h2 className="text-2xl font-comic font-bold text-brand-900">Start Adventure</h2><button onClick={() => setShowGeneratorModal(false)} className="p-1 hover:bg-black/5 rounded-full transition-colors"><X className="w-5 h-5 text-gray-400" /></button></div>
-                              <p className="text-sm text-gray-500">What do you want to teach today?</p>
-                          </div>
-                          <div className="p-6 overflow-y-auto custom-scrollbar">
-                              <form onSubmit={handleGenerateStory} className="space-y-6">
-                                  <div className="flex p-1 bg-gray-100 rounded-xl border border-gray-200"><button type="button" onClick={() => setGenerationMode('topic')} className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${generationMode === 'topic' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Wand2 className="w-4 h-4" /> From Topic</button><button type="button" onClick={() => setGenerationMode('custom')} className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${generationMode === 'custom' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><FileText className="w-4 h-4" /> Custom Story</button></div>
-                                  <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">{generationMode === 'topic' ? 'Topic' : 'Title'}</label><StyledInput type="text" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={generationMode === 'topic' ? "e.g. The Water Cycle..." : "Story Title"} className="py-3 font-medium" autoFocus={generationMode === 'topic'} required />{generationMode === 'topic' && (<div className="flex flex-wrap gap-2 mt-2">{STORY_STARTERS[language]?.slice(0, 4).map((starter, i) => (<button key={i} type="button" onClick={() => setTopic(starter)} className="text-xs bg-gray-50 border border-gray-100 hover:border-brand-300 hover:bg-brand-50 text-gray-500 hover:text-brand-700 px-2 py-1 rounded-md transition-all">{starter}</button>))}</div>)}</div>
-                                  {generationMode === 'custom' && (<div className="space-y-2 animate-fade-in"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Story Content</label><StyledTextArea value={customStoryText} onChange={(e) => setCustomStoryText(e.target.value)} placeholder="Paste your story here..." className="h-32 text-sm" required /></div>)}
-                                  <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Language</label><StyledSelect value={language} onChange={(e: any) => setLanguage(e.target.value as Language)} options={[{value: 'English', label: 'English'}, {value: 'Khmer', label: 'Khmer'}]} /></div>
-                                  <div className="border border-brand-100 rounded-xl p-4 bg-brand-50/30"><div className="flex justify-between items-center cursor-pointer" onClick={() => setShowCharInput(!showCharInput)}><div className="flex items-center gap-2"><div className="bg-brand-100 p-1.5 rounded-md text-brand-600"><Users className="w-4 h-4" /></div><span className="font-bold text-sm text-gray-800">Characters ({characters.length})</span></div><ChevronDown className={`w-4 h-4 text-gray-400 transform transition-transform ${showCharInput ? 'rotate-180' : ''}`} /></div>{showCharInput && (<div className="space-y-4 mt-4 animate-fade-in pt-4 border-t border-brand-100/50"><AddCharacterForm name={newCharName} setName={setNewCharName} desc={newCharDesc} setDesc={setNewCharDesc} voice={newCharVoice} setVoice={setNewCharVoice} onAdd={handleAddCharacter} />{characters.length > 0 && <CharacterList characters={characters} onRemove={handleRemoveCharacter} onUpdate={handleUpdateCharacter} onGenerateImage={handleGenerateCharacterImage} allowEdit={true} />}</div>)}</div>
-                                  <Button type="submit" isLoading={isLoading} className="w-full py-3.5 text-base shadow-lg shadow-brand-500/20">{generationMode === 'topic' ? <Wand2 className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />} {generationMode === 'topic' ? 'Generate Story' : 'Create Scenes'}</Button>
-                                  {error && <p className="text-red-500 text-center text-xs bg-red-50 p-2 rounded-lg border border-red-100">{error}</p>}
-                              </form>
-                          </div>
-                      </div>
-                  </div>
-              )}
-          </div>
-      );
-  }
-
-  // --- EDITOR VIEW ---
+  // --- JSX ---
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-20 relative">
-      {draftRestored && <div className="fixed top-20 right-4 z-50 bg-emerald-100 border border-emerald-200 text-emerald-800 px-3 py-2 rounded-lg shadow-sm animate-fade-in flex items-center gap-2 text-sm font-medium"><CheckCircle2 className="w-4 h-4" /> Draft Restored</div>}
-      
       {showSlideshow && <Slideshow topic={topic} segments={segments} onClose={() => setShowSlideshow(false)} backgroundMusic={backgroundMusic} autoExport={autoExport} presentationConfig={presentationConfig} characters={characters} />}
       {showVideoStudio && <VideoStudio segments={segments} onUpdateSegment={(id, field, val) => handleUpdateSegment(id, field, val)} onClose={() => setShowVideoStudio(false)} onExport={() => { setShowVideoStudio(false); startExport(); }} />}
       
+      {/* Modals omitted for brevity, identical to previous, just ensure they show/hide based on state */}
       {/* Background Music Modal */}
       {showMusicModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
@@ -982,7 +1049,7 @@ export const StoryMode: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-white p-3 rounded-xl shadow-sm border border-gray-100 sticky top-20 z-40 backdrop-blur-lg bg-white/95">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-             <Button variant="icon" onClick={handleBackToDashboard} className="text-gray-400 hover:text-gray-900"><ArrowLeft className="w-5 h-5" /></Button>
+             <Button variant="icon" onClick={() => onNavigate('dashboard')} className="text-gray-400 hover:text-gray-900"><ArrowLeft className="w-5 h-5" /></Button>
              <div className="min-w-0"><h2 className="text-lg font-bold text-gray-900 line-clamp-1 font-comic">{topic || "Untitled Story"}</h2><div className="flex items-center gap-2 text-[10px] text-gray-400 font-medium uppercase tracking-wider"><span>{language}</span><span className="w-1 h-1 rounded-full bg-gray-300"></span><span>{segments.length} Scenes</span><span className={`flex items-center gap-1 ml-2 ${saveStatus === 'saving' ? 'text-brand-500' : saveStatus === 'error' ? 'text-red-500' : 'text-green-500'}`}>{saveStatus === 'saving' && <RefreshCw className="w-3 h-3 animate-spin" />}{saveStatus === 'saved' && <CheckCircle2 className="w-3 h-3" />}{saveStatus === 'error' && <CloudOff className="w-3 h-3" />}</span></div></div>
         </div>
         <div className="flex items-center gap-2">
@@ -994,6 +1061,7 @@ export const StoryMode: React.FC = () => {
             <Dropdown align="right" trigger={<Button variant="outline" size="sm" className="gap-2">Project <ChevronDown className="w-3 h-3 opacity-50" /></Button>}>
                 <button onClick={handleSaveStory} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2 text-gray-700"><Save className="w-4 h-4" /> Save Project</button>
                 <button onClick={handleExportToFile} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2 text-gray-700"><Download className="w-4 h-4" /> Export JSON</button>
+                <button onClick={handleExportPDF} className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 flex items-center gap-2 text-gray-700"><FileText className="w-4 h-4" /> Export PDF Book</button>
             </Dropdown>
             <Button onClick={startExport} variant="outline" size="sm" className="gap-2 text-indigo-600 border-indigo-100 hover:bg-indigo-50 hover:border-indigo-200"><Video className="w-4 h-4" /> <span className="hidden md:inline">Export Video</span></Button>
             <Button onClick={startPresentation} size="sm" className="bg-gray-900 text-white hover:bg-black border-gray-900 shadow-gray-900/20 gap-2"><PlayCircle className="w-4 h-4" /> Present</Button>
@@ -1002,7 +1070,6 @@ export const StoryMode: React.FC = () => {
 
       <div className="space-y-8">
         {segments.map((segment, index) => {
-          // ... segment rendering logic ...
           const images = segment.imageUrls || (segment.imageUrl ? [segment.imageUrl] : []);
           const activeIndex = segment.previewIndex !== undefined ? segment.previewIndex : images.length - 1;
           const displayImage = images.length > 0 ? images[activeIndex] : null;
@@ -1058,7 +1125,7 @@ export const StoryMode: React.FC = () => {
                         <div className="p-2 w-48"><div className="text-[10px] font-bold text-gray-400 uppercase block mb-2">Text Appearance</div><div className="grid grid-cols-2 gap-1">{ANIMATION_OPTIONS.map(o => (<button key={o.value} onClick={() => handleUpdateSegment(segment.id, 'animation', o.value)} className={`text-[10px] px-2 py-1.5 rounded border text-left transition-colors ${segment.animation === o.value ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold' : 'border-transparent hover:bg-gray-50 text-gray-600'}`}>{o.label}</button>))}</div></div>
                     </Dropdown>
                     <div className="w-[1px] h-4 bg-gray-200 mx-1"></div>
-                    {segment.audioUrl ? (<div className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-2 py-0.5 shadow-sm"><button onClick={() => { const a = new Audio(segment.audioUrl); a.play(); }} className="text-brand-500 hover:text-brand-600"><PlayCircle className="w-4 h-4" /></button><span className="text-[10px] font-medium text-gray-500">Audio Ready</span><button onClick={() => handleUpdateSegment(segment.id, 'audioUrl', undefined)} className="text-gray-300 hover:text-red-400 ml-1"><X className="w-3 h-3" /></button></div>) : (<Dropdown trigger={<button className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold text-gray-500 hover:text-brand-600 hover:bg-brand-50 transition-colors" disabled={segment.isGeneratingAudio}>{segment.isGeneratingAudio ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Mic className="w-3 h-3" />} Narrate</button>} align="right"><div className="p-1"><div className="text-[10px] font-bold text-gray-400 px-2 py-1 uppercase">Select Voice</div><button onClick={() => handleGenerateAudioForSegment(segment.id, segment.text, 'Puck')} className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-50 rounded-md text-gray-700">Default (Storyteller)</button>{characters.map(c => (<button key={c.id} onClick={() => handleGenerateAudioForSegment(segment.id, segment.text, c.voiceName || 'Puck', c.id)} className="w-full text-left px-2 py-1.5 text-xs hover:bg-indigo-50 text-indigo-600 rounded-md font-medium">{c.name}</button>))}</div></Dropdown>)}
+                    {segment.audioUrl ? (<div className="flex items-center gap-2 bg-white border border-gray-200 rounded-full px-2 py-0.5 shadow-sm"><button onClick={() => toggleSegmentAudio(segment.id, segment.audioUrl)} className="text-brand-500 hover:text-brand-600">{playingAudioId === segment.id ? <Pause className="w-4 h-4" /> : <PlayCircle className="w-4 h-4" />}</button><span className="text-[10px] font-medium text-gray-500">Audio Ready</span><button onClick={() => handleUpdateSegment(segment.id, 'audioUrl', undefined)} className="text-gray-300 hover:text-red-400 ml-1"><X className="w-3 h-3" /></button></div>) : (<Dropdown trigger={<button className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold text-gray-500 hover:text-brand-600 hover:bg-brand-50 transition-colors" disabled={segment.isGeneratingAudio}>{segment.isGeneratingAudio ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Mic className="w-3 h-3" />} Narrate</button>} align="right"><div className="p-1"><div className="text-[10px] font-bold text-gray-400 px-2 py-1 uppercase">Select Voice</div><button onClick={() => handleGenerateAudioForSegment(segment.id, segment.text, 'Puck')} className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-50 rounded-md text-gray-700">Default (Storyteller)</button>{characters.map(c => (<button key={c.id} onClick={() => handleGenerateAudioForSegment(segment.id, segment.text, c.voiceName || 'Puck', c.id)} className="w-full text-left px-2 py-1.5 text-xs hover:bg-indigo-50 text-indigo-600 rounded-md font-medium">{c.name}</button>))}</div></Dropdown>)}
                  </div>
               </div>
               <div className="flex-1 relative"><StyledTextArea value={segment.text} onChange={(e) => handleUpdateSegment(segment.id, 'text', e.target.value)} style={{ fontFamily: presentationConfig.fontFamily }} className={`w-full h-full min-h-[200px] text-lg md:text-xl leading-relaxed bg-transparent border-0 focus:ring-0 p-6 resize-none`} placeholder="Write scene text here..." /></div>
@@ -1067,6 +1134,20 @@ export const StoryMode: React.FC = () => {
         )})}
         <div className="flex justify-center py-8"><button onClick={handleAddSegment} className="group flex items-center gap-3 px-6 py-4 rounded-2xl border border-dashed border-gray-300 hover:border-brand-400 hover:bg-brand-50/50 transition-all"><div className="w-8 h-8 rounded-full bg-gray-100 group-hover:bg-brand-100 text-gray-400 group-hover:text-brand-500 flex items-center justify-center transition-colors"><Plus className="w-5 h-5" /></div><span className="font-bold text-gray-500 group-hover:text-brand-600">Add New Scene</span></button></div>
       </div>
+      
+      {/* Edit Video Modal */}
+      {editingVideoId && (
+        <VideoEditorModal 
+           segment={segments.find(s => s.id === editingVideoId)!} 
+           onUpdate={(cfg) => {
+               handleUpdateSegment(editingVideoId, 'videoConfig', cfg);
+               setEditingVideoId(null);
+           }} 
+           onClose={() => setEditingVideoId(null)} 
+        />
+      )}
     </div>
   );
 };
+
+export const StoryMode = () => null; // Placeholder as we split components
