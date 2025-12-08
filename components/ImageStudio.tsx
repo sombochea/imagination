@@ -316,7 +316,7 @@ export const ImageStudio: React.FC = () => {
                              </div>
                         </div>
                     ) : (
-                        <div className="text-gray-600 text-center">
+                        <div className="text-gray-300 text-center">
                             <Sparkles className="w-16 h-16 mx-auto mb-3 opacity-20" />
                             <p className="opacity-50 font-medium">Edited image will appear here</p>
                         </div>
