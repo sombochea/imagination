@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { ImageSize, AspectRatio, Language, Character } from "../types";
 
-// Standard client for Flash interactions (Story, Edit) using the injected environment key
+// Standard client for Text interactions using the injected environment key
 const standardAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Helper to get a client for Paid services (Pro Image Gen, Veo)
@@ -11,14 +11,19 @@ export const getProClient = async (): Promise<GoogleGenAI> => {
     const hasKey = await win.aistudio.hasSelectedApiKey();
     if (!hasKey) {
       await win.aistudio.openSelectKey();
-      // Assume success as per instructions, proceed to create client
     }
   }
-  // Re-instantiate to pick up the potentially selected key from the environment context
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
-export const generateStorySegments = async (topic: string, language: Language = 'English', characters: Character[] = [], customStory?: string): Promise<any[]> => {
+export const generateStorySegments = async (
+    topic: string, 
+    language: Language = 'English', 
+    characters: Character[] = [], 
+    customStory?: string,
+    educationalGoal?: string
+): Promise<any[]> => {
+  
   const languageInstruction = language === 'Khmer' 
     ? "Write the story text in Khmer (Cambodian) language. The visual prompts must remain in English." 
     : "Write the story text in English.";
@@ -27,44 +32,56 @@ export const generateStorySegments = async (topic: string, language: Language = 
     ? `\nKey Characters to include:\n${characters.map(c => `- ${c.name}: ${c.description}`).join('\n')}\nEnsure these characters appear in the story where appropriate.`
     : '';
 
+  const goalContext = educationalGoal 
+    ? `\nPRIMARY EDUCATIONAL GOAL: ${educationalGoal}\nEnsure the story specifically addresses this goal, explaining concepts clearly for a child audience.`
+    : '';
+
   let prompt = '';
 
   if (customStory) {
      prompt = `
-        You are a creative teacher's assistant.
-        Refine and adapt the following raw story content into an engaging educational presentation for children.
+        You are an expert educational content creator powered by Gemini 3.
+        Your task is to refine raw story content into a high-quality, engaging, and educational script for a children's visual storybook.
         
-        Raw Story Content:
-        "${customStory}"
-        
-        Context/Topic: "${topic}" (Use this to frame the refinement if provided)
+        INPUT CONTEXT:
+        - Topic: "${topic}"
+        - Raw Content: "${customStory}"
+        ${goalContext}
         ${characterContext}
         ${languageInstruction}
 
-        Your task:
-        1. Refine the text to be suitable for children (engaging, clear, educational flow).
-        2. Break the content into distinct segments or "scenes" based on the flow of the story.
-        3. For each segment, provide the refined text to read, and a specific visual prompt to generate an anime-style illustration for that segment.
-        4. If a character is in the scene, strictly use their description in the visual prompt.
-
-        Return JSON.
+        INSTRUCTIONS:
+        1. Analyze the raw content and restructuring it to maximize educational value and engagement.
+        2. Break the narrative into 4-6 distinct "scenes" or segments that flow logically.
+        3. For each segment:
+           - "text": The script to be read aloud. Keep it rhythmic, clear, and age-appropriate.
+           - "visualPrompt": A highly detailed, artistic image generation prompt describing the scene. Use "anime style, vivid colors, high quality". Describe character actions, setting, and lighting.
+        
+        Return the result as a JSON array.
      `;
   } else {
      prompt = `
-        You are a creative teacher's assistant. 
-        Create a short, engaging educational explanation or story for children about the topic: "${topic}".
+        You are an expert educational content creator powered by Gemini 3.
+        Create a captivating and educational story to teach children about: "${topic}".
+
+        ${goalContext}
         ${characterContext}
         ${languageInstruction}
-        Break the content into 3-5 distinct segments or "scenes".
-        For each segment, provide the text to read to the child, and a specific visual prompt to generate an anime-style illustration for that segment.
-        If a character is in the scene, strictly use their description in the visual prompt to maintain consistency.
+
+        INSTRUCTIONS:
+        1. Plan a narrative arc that introduces the concept, explores it through interaction/adventure, and concludes with a clear lesson.
+        2. Break this narrative into 4-6 distinct "scenes".
+        3. For each scene, provide:
+           - "text": The narration script. Use engaging language, simple analogies, and a warm tone.
+           - "visualPrompt": A highly detailed image generation prompt. Specify "anime style, vibrant 4k, detailed background". Explicitly describe characters and their actions.
         
-        Return JSON.
+        Return the result as a JSON array.
       `;
   }
 
+  // Using Gemini 3 Pro for advanced reasoning and structure
   const response = await standardAI.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3-pro-preview",
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -101,20 +118,13 @@ export const generateProImage = async (
   try {
     const ai = await getProClient();
     
-    // Construct parts: prompt text + optional reference images
     const parts: any[] = [{ text: prompt }];
 
-    // Add reference images as inlineData
     referenceImages.forEach(base64Str => {
-      // Ensure we strip the data prefix if present, though SDK often handles it, manual stripping is safer
       const data = base64Str.replace(/^data:image\/\w+;base64,/, "");
       const mimeType = base64Str.match(/^data:([^;]+);/)?.[1] || "image/png";
-      
       parts.push({
-        inlineData: {
-          data,
-          mimeType
-        }
+        inlineData: { data, mimeType }
       });
     });
 
@@ -146,7 +156,6 @@ export const editImageWithFlash = async (
   prompt: string
 ): Promise<string | null> => {
   try {
-    // Strip prefix if present for API call
     const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
     const mimeType = base64Image.match(/^data:([^;]+);/)?.[1] || "image/png";
 
@@ -154,15 +163,8 @@ export const editImageWithFlash = async (
       model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: mimeType,
-            },
-          },
-          {
-            text: prompt,
-          },
+          { inlineData: { data: base64Data, mimeType: mimeType } },
+          { text: prompt },
         ],
       },
     });
@@ -179,8 +181,6 @@ export const editImageWithFlash = async (
   }
 };
 
-// --- Video Generation ---
-
 export const generateVideo = async (
   prompt: string, 
   imageBase64?: string
@@ -192,8 +192,8 @@ export const generateVideo = async (
     
     const config = {
       numberOfVideos: 1,
-      resolution: '720p', // 720p is standard for fast preview
-      aspectRatio: '16:9' // Landscape standard
+      resolution: '720p',
+      aspectRatio: '16:9'
     };
 
     if (imageBase64) {
@@ -217,21 +217,18 @@ export const generateVideo = async (
        });
     }
 
-    // Polling loop
     while (!operation.done) {
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Poll every 5s
+      await new Promise(resolve => setTimeout(resolve, 5000));
       operation = await ai.operations.getVideosOperation({ operation: operation });
     }
 
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
     if (!downloadLink) throw new Error("No video URI returned");
 
-    // Fetch the video bytes using the API key
     const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
     
-    // Convert to Base64 for storage
     const videoBase64 = await new Promise<string>((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -247,8 +244,6 @@ export const generateVideo = async (
     return null;
   }
 };
-
-// --- Audio Generation Utilities ---
 
 function base64ToUint8Array(base64: string): Uint8Array {
   const binaryString = atob(base64);
@@ -274,7 +269,7 @@ function pcm16ToWavBlob(pcm16Data: Uint8Array, sampleRate: number = 24000): Blob
   writeString(view, 8, 'WAVE');
   writeString(view, 12, 'fmt ');
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
+  view.setUint16(20, 1, true); 
   view.setUint16(22, numChannels, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, byteRate, true);
@@ -299,9 +294,7 @@ export const generateSpeech = async (text: string, voiceName: string = 'Puck'): 
   try {
     const response = await standardAI.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: {
-        parts: [{ text: text }],
-      },
+      contents: { parts: [{ text: text }] },
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {

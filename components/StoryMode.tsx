@@ -4,7 +4,7 @@ import { saveStoryToDB, getStoriesFromDB, deleteStoryFromDB, exportStoryToJson, 
 import { generateStoryPDF } from '../services/pdf';
 import { StorySegment, ImageSize, AspectRatio, Language, SavedStory, TextAnimation, Character, SceneTransition, VideoConfig, PresentationConfig } from '../types';
 import { Button } from './Button';
-import { BookOpen, Image as ImageIcon, Sparkles, RefreshCw, PlayCircle, Save, FolderOpen, Trash2, X, Clock, Volume2, Mic, Music, Upload, Video, Plus, Download, FileUp, Settings2, CheckCircle2, UserPlus, Users, GripVertical, LayoutTemplate, Camera, Film, ArrowLeft, ArrowRight, Wand2, Calendar, MoreVertical, Edit3, Speech, UserCog, Cloud, CloudOff, Scissors, Sliders, FileText, ChevronDown, Play, Type, Gauge, MoreHorizontal, FileBox, Disc, MonitorPlay, Zap, Move, Pause } from 'lucide-react';
+import { BookOpen, Image as ImageIcon, Sparkles, RefreshCw, PlayCircle, Save, FolderOpen, Trash2, X, Clock, Volume2, Mic, Music, Upload, Video, Plus, Download, FileUp, Settings2, CheckCircle2, UserPlus, Users, GripVertical, LayoutTemplate, Camera, Film, ArrowLeft, ArrowRight, Wand2, Calendar, MoreVertical, Edit3, Speech, UserCog, Cloud, CloudOff, Scissors, Sliders, FileText, ChevronDown, Play, Type, Gauge, MoreHorizontal, FileBox, Disc, MonitorPlay, Zap, Move, Pause, Lightbulb } from 'lucide-react';
 import { Slideshow } from './Slideshow';
 import { VideoStudio } from './VideoStudio';
 
@@ -386,6 +386,7 @@ export const StoryDashboard: React.FC<StoryDashboardProps> = ({ onNavigate }) =>
     const [generationMode, setGenerationMode] = useState<GenerationMode>('topic');
     const [customStoryText, setCustomStoryText] = useState('');
     const [topic, setTopic] = useState('');
+    const [educationalGoal, setEducationalGoal] = useState('');
     const [language, setLanguage] = useState<Language>('English');
     const [characters, setCharacters] = useState<Character[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -412,7 +413,6 @@ export const StoryDashboard: React.FC<StoryDashboardProps> = ({ onNavigate }) =>
         const file = e.target.files?.[0];
         if (!file) return;
         importStoryFromJson(file).then(async (story) => {
-            // Save imported story then navigate
             await saveStoryToDB(story);
             alert("Project imported successfully!");
             onNavigate('editor', story.id);
@@ -429,7 +429,7 @@ export const StoryDashboard: React.FC<StoryDashboardProps> = ({ onNavigate }) =>
     };
 
     const openGenerator = () => {
-        setTopic(''); setCharacters([]); setLanguage('English');
+        setTopic(''); setCharacters([]); setLanguage('English'); setEducationalGoal('');
         setGenerationMode('topic'); setCustomStoryText('');
         setShowGeneratorModal(true); setShowCharInput(true);
     };
@@ -453,7 +453,9 @@ export const StoryDashboard: React.FC<StoryDashboardProps> = ({ onNavigate }) =>
         if (generationMode === 'custom' && !topic) { setTopic(customStoryText.slice(0, 30) + "..."); }
         try {
           const isCustom = generationMode === 'custom';
-          const rawSegments = await generateStorySegments(topic, language, characters, isCustom ? customStoryText : undefined);
+          // Now passing educationalGoal to the generation service
+          const rawSegments = await generateStorySegments(topic, language, characters, isCustom ? customStoryText : undefined, educationalGoal);
+          
           const newSegments: StorySegment[] = rawSegments.map((s, i) => ({
             id: Date.now().toString() + i,
             text: s.text,
@@ -490,7 +492,16 @@ export const StoryDashboard: React.FC<StoryDashboardProps> = ({ onNavigate }) =>
                      <Button onClick={openGenerator} className="shadow-lg shadow-brand-500/20"><Plus className="w-4 h-4" /> New Project</Button>
                   </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in" style={{ animationDelay: '100ms' }}>
+              
+              {savedStories.length === 0 ? (
+                  <div className="text-center py-24 px-4 bg-white rounded-3xl shadow-sm border border-brand-100 flex flex-col items-center animate-slide-up">
+                      <div className="w-24 h-24 bg-brand-50 rounded-full flex items-center justify-center mb-6 shadow-inner text-brand-500"><Sparkles className="w-10 h-10" /></div>
+                      <h3 className="text-3xl font-comic font-bold text-gray-900 mb-3">Welcome to Teacher's Imagination!</h3>
+                      <p className="text-gray-500 max-w-lg mx-auto mb-8 text-lg">Turn your lesson ideas into captivating animated stories in seconds. Use the power of Gemini 3 to visualize complex concepts for kids.</p>
+                      <Button onClick={openGenerator} size="lg" className="px-8 py-4 text-lg shadow-xl shadow-brand-500/30 hover:scale-105 transition-transform"><Wand2 className="w-5 h-5 mr-2" /> Start Your First Story</Button>
+                  </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-fade-in" style={{ animationDelay: '100ms' }}>
                   <div onClick={openGenerator} className="aspect-[4/3] rounded-2xl border-2 border-dashed border-brand-200 bg-brand-50/30 hover:bg-brand-50 hover:border-brand-400 cursor-pointer flex flex-col items-center justify-center gap-4 group transition-all">
                       <div className="w-14 h-14 rounded-full bg-brand-100 group-hover:bg-brand-200 text-brand-500 flex items-center justify-center transition-colors shadow-sm"><Plus className="w-6 h-6" /></div>
                       <span className="font-comic font-bold text-brand-700">Create New Story</span>
@@ -504,18 +515,33 @@ export const StoryDashboard: React.FC<StoryDashboardProps> = ({ onNavigate }) =>
                           </div>
                       );
                   })}
-              </div>
+                </div>
+              )}
+              
               {showGeneratorModal && (
                   <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-brand-900/20 backdrop-blur-sm animate-fade-in">
                       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden animate-slide-up flex flex-col max-h-[90vh]">
                           <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-brand-50 to-white">
                               <div className="flex justify-between items-start mb-1"><h2 className="text-2xl font-comic font-bold text-brand-900">Start Adventure</h2><button onClick={() => setShowGeneratorModal(false)} className="p-1 hover:bg-black/5 rounded-full transition-colors"><X className="w-5 h-5 text-gray-400" /></button></div>
-                              <p className="text-sm text-gray-500">What do you want to teach today?</p>
+                              <p className="text-sm text-gray-500">Gemini 3 will craft an educational story tailored to your goals.</p>
                           </div>
                           <div className="p-6 overflow-y-auto custom-scrollbar">
                               <form onSubmit={handleGenerateStory} className="space-y-6">
-                                  <div className="flex p-1 bg-gray-100 rounded-xl border border-gray-200"><button type="button" onClick={() => setGenerationMode('topic')} className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${generationMode === 'topic' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Wand2 className="w-4 h-4" /> From Topic</button><button type="button" onClick={() => setGenerationMode('custom')} className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${generationMode === 'custom' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><FileText className="w-4 h-4" /> Custom Story</button></div>
-                                  <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">{generationMode === 'topic' ? 'Topic' : 'Title'}</label><StyledInput type="text" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={generationMode === 'topic' ? "e.g. The Water Cycle..." : "Story Title"} className="py-3 font-medium" autoFocus={generationMode === 'topic'} required />{generationMode === 'topic' && (<div className="flex flex-wrap gap-2 mt-2">{STORY_STARTERS[language]?.slice(0, 4).map((starter, i) => (<button key={i} type="button" onClick={() => setTopic(starter)} className="text-xs bg-gray-50 border border-gray-100 hover:border-brand-300 hover:bg-brand-50 text-gray-500 hover:text-brand-700 px-2 py-1 rounded-md transition-all">{starter}</button>))}</div>)}</div>
+                                  <div className="flex p-1 bg-gray-100 rounded-xl border border-gray-200"><button type="button" onClick={() => setGenerationMode('topic')} className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${generationMode === 'topic' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Wand2 className="w-4 h-4" /> From Topic</button><button type="button" onClick={() => setGenerationMode('custom')} className={`flex-1 py-2 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${generationMode === 'custom' ? 'bg-white text-brand-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><FileText className="w-4 h-4" /> Custom Script</button></div>
+                                  
+                                  <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">{generationMode === 'topic' ? 'Topic / Lesson Title' : 'Story Title'}</label><StyledInput type="text" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={generationMode === 'topic' ? "e.g. The Water Cycle, Photosynthesis..." : "Story Title"} className="py-3 font-medium" autoFocus={generationMode === 'topic'} required />{generationMode === 'topic' && (<div className="flex flex-wrap gap-2 mt-2">{STORY_STARTERS[language]?.slice(0, 4).map((starter, i) => (<button key={i} type="button" onClick={() => setTopic(starter)} className="text-xs bg-gray-50 border border-gray-100 hover:border-brand-300 hover:bg-brand-50 text-gray-500 hover:text-brand-700 px-2 py-1 rounded-md transition-all">{starter}</button>))}</div>)}</div>
+                                  
+                                  <div className="space-y-2">
+                                      <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center gap-1"><Lightbulb className="w-3 h-3 text-brand-500" /> Educational Goal (Optional)</label>
+                                      <StyledInput 
+                                          type="text" 
+                                          value={educationalGoal} 
+                                          onChange={(e) => setEducationalGoal(e.target.value)} 
+                                          placeholder="e.g. Explain how plants make food using sunlight." 
+                                          className="py-3 font-medium border-brand-200 focus:border-brand-500" 
+                                      />
+                                  </div>
+
                                   {generationMode === 'custom' && (<div className="space-y-2 animate-fade-in"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Story Content</label><StyledTextArea value={customStoryText} onChange={(e) => setCustomStoryText(e.target.value)} placeholder="Paste your story here..." className="h-32 text-sm" required /></div>)}
                                   <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Language</label><StyledSelect value={language} onChange={(e: any) => setLanguage(e.target.value as Language)} options={[{value: 'English', label: 'English'}, {value: 'Khmer', label: 'Khmer'}]} /></div>
                                   <div className="border border-brand-100 rounded-xl p-4 bg-brand-50/30"><div className="flex justify-between items-center cursor-pointer" onClick={() => setShowCharInput(!showCharInput)}><div className="flex items-center gap-2"><div className="bg-brand-100 p-1.5 rounded-md text-brand-600"><Users className="w-4 h-4" /></div><span className="font-bold text-sm text-gray-800">Characters ({characters.length})</span></div><ChevronDown className={`w-4 h-4 text-gray-400 transform transition-transform ${showCharInput ? 'rotate-180' : ''}`} /></div>{showCharInput && (<div className="space-y-4 mt-4 animate-fade-in pt-4 border-t border-brand-100/50"><AddCharacterForm name={newCharName} setName={setNewCharName} desc={newCharDesc} setDesc={setNewCharDesc} voice={newCharVoice} setVoice={setNewCharVoice} onAdd={handleAddCharacter} />{characters.length > 0 && <CharacterList characters={characters} onRemove={handleRemoveCharacter} onUpdate={handleUpdateCharacter} onGenerateImage={() => {}} allowEdit={true} />}</div>)}</div>
@@ -1150,4 +1176,4 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
   );
 };
 
-export const StoryMode = () => null; // Placeholder as we split components
+export const StoryMode = () => null; // Placeholder
