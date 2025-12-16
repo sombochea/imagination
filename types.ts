@@ -10,13 +10,13 @@ export interface StorySegment {
   
   // Audio
   audioUrl?: string; // Blob URL (session only)
-  audioData?: string; // Base64 Data (persistent)
+  audioData?: string; // Base64 Data (persistent) - OR Cloud URL
   isGeneratingAudio?: boolean;
   narratorId?: string; // ID of the character narrating this segment (or 'default')
   
   // Video (Animation)
   videoUrl?: string; // Blob URL (session)
-  videoData?: string; // Base64 Data (persistent)
+  videoData?: string; // Base64 Data (persistent) - OR Cloud URL
   isGeneratingVideo?: boolean;
   videoConfig?: VideoConfig; // New: Editing settings
 
@@ -116,4 +116,14 @@ export interface SavedStory {
   language: Language;
   backgroundMusic?: string; // Data URL for the audio file
   presentationConfig?: PresentationConfig;
+}
+
+export interface StorageSettings {
+  provider: 'local' | 's3' | 'r2' | 'gcs';
+  endpoint?: string; // For R2 or custom S3
+  region: string;
+  bucket: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  publicUrlBase?: string; // Optional custom domain for files
 }

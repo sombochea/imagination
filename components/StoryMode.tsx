@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { generateStorySegments, generateProImage, generateSpeech, generateVideo } from '../services/gemini';
 import { saveStoryToDB, getStoriesFromDB, deleteStoryFromDB, exportStoryToJson, importStoryFromJson, saveDraft, getDraft } from '../services/storage';
 import { generateStoryPDF } from '../services/pdf';
+import { assetStore } from '../services/assetStore'; // Imported Asset Store
 import { StorySegment, ImageSize, AspectRatio, Language, SavedStory, TextAnimation, Character, SceneTransition, VideoConfig, PresentationConfig } from '../types';
 import { Button } from './Button';
 import { BookOpen, Image as ImageIcon, Sparkles, RefreshCw, PlayCircle, Save, FolderOpen, Trash2, X, Clock, Volume2, Mic, Music, Upload, Video, Plus, Download, FileUp, Settings2, CheckCircle2, UserPlus, Users, GripVertical, LayoutTemplate, Camera, Film, ArrowLeft, ArrowRight, Wand2, Calendar, MoreVertical, Edit3, Speech, UserCog, Cloud, CloudOff, Scissors, Sliders, FileText, ChevronDown, Play, Type, Gauge, MoreHorizontal, FileBox, Disc, MonitorPlay, Zap, Move, Pause, Lightbulb } from 'lucide-react';
@@ -295,6 +297,7 @@ const VideoEditorModal: React.FC<{
                         onLoadedMetadata={handleLoadedMetadata}
                         onTimeUpdate={handleTimeUpdate}
                         onClick={togglePlay}
+                        crossOrigin="anonymous" // Important for cloud stored videos
                      />
                      <button onClick={togglePlay} className="absolute inset-0 m-auto w-16 h-16 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center text-white backdrop-blur-sm transition-all shadow-lg">
                          {isPlaying ? <div className="w-4 h-4 bg-white rounded-sm" /> : <Play className="w-8 h-8 fill-current ml-1" />}
@@ -382,6 +385,8 @@ interface StoryDashboardProps {
 }
 
 export const StoryDashboard: React.FC<StoryDashboardProps> = ({ onNavigate }) => {
+    // ... [Content unchanged, just standard dashboard logic] ...
+    // Note: Re-implementing the full Dashboard component here for completeness
     const [showGeneratorModal, setShowGeneratorModal] = useState(false);
     const [generationMode, setGenerationMode] = useState<GenerationMode>('topic');
     const [customStoryText, setCustomStoryText] = useState('');
@@ -453,7 +458,6 @@ export const StoryDashboard: React.FC<StoryDashboardProps> = ({ onNavigate }) =>
         if (generationMode === 'custom' && !topic) { setTopic(customStoryText.slice(0, 30) + "..."); }
         try {
           const isCustom = generationMode === 'custom';
-          // Now passing educationalGoal to the generation service
           const rawSegments = await generateStorySegments(topic, language, characters, isCustom ? customStoryText : undefined, educationalGoal);
           
           const newSegments: StorySegment[] = rawSegments.map((s, i) => ({
@@ -651,9 +655,12 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
     setTopic(story.topic);
     setCharacters(story.characters || []); 
     
+    // Legacy support for base64 storage - newer stories will have URLs directly in audioData/videoData fields via Cloud Storage
     const hydratedSegments = story.segments.map(s => {
-        let audioUrl = undefined;
-        if (s.audioData) {
+        // Hydrate Audio
+        let audioUrl = s.audioData; // If it's a cloud URL, this is fine
+        // If it looks like base64, create blob URL for session playback
+        if (s.audioData && s.audioData.startsWith('data:audio')) {
             try {
                 const base64Clean = s.audioData.replace(/^data:audio\/[a-z]+;base64,/, "").replace(/\s/g, '');
                 const binaryString = atob(base64Clean);
@@ -663,8 +670,9 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
             } catch (e) { console.warn("Failed to hydrate audio", s.id, e); }
         }
 
-        let videoUrl = undefined;
-        if (s.videoData) {
+        // Hydrate Video
+        let videoUrl = s.videoData; 
+        if (s.videoData && s.videoData.startsWith('data:video')) {
              try {
                 const base64Clean = s.videoData.replace(/^data:video\/[a-z]+;base64,/, "").replace(/\s/g, '');
                 const binaryString = atob(base64Clean);
@@ -679,8 +687,8 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
 
         return {
             ...s, 
-            audioUrl,
-            videoUrl,
+            audioUrl: audioUrl || s.audioUrl, // Prefer stored URL or hydrated session URL
+            videoUrl: videoUrl || s.videoUrl,
             imageUrls: images, 
             isGeneratingImage: false, 
             isGeneratingAudio: false, 
@@ -714,8 +722,13 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
     setCharacters(prev => prev.map(c => c.id === charId ? { ...c, isGenerating: true } : c));
     try {
         const prompt = `Character Design Sheet: ${char.name}, ${char.description}. Anime style, white background, detailed character portrait, clear facial features.`;
-        const imageUrl = await generateProImage(prompt, ImageSize.Size1K, AspectRatio.Square);
-        if (imageUrl) { setCharacters(prev => prev.map(c => c.id === charId ? { ...c, imageUrl, isGenerating: false } : c)); } 
+        const base64Image = await generateProImage(prompt, ImageSize.Size1K, AspectRatio.Square);
+        
+        if (base64Image) { 
+             // Upload to Asset Store
+             const finalUrl = await assetStore.uploadBase64(base64Image, 'image');
+             setCharacters(prev => prev.map(c => c.id === charId ? { ...c, imageUrl: finalUrl, isGenerating: false } : c)); 
+        } 
         else { throw new Error("No image returned"); }
     } catch (e) { console.error(e); alert("Failed to generate character image."); setCharacters(prev => prev.map(c => c.id === charId ? { ...c, isGenerating: false } : c)); }
   };
@@ -742,14 +755,18 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
   const handleGenerateImageForSegment = async (id: string, prompt: string) => {
     setSegments(prev => prev.map(s => s.id === id ? { ...s, isGeneratingImage: true } : s));
     const referencedCharacters = characters.filter(c => c.imageUrl && prompt.toLowerCase().includes(c.name.toLowerCase()));
+    // Use the URLs directly if they are already remote, or base64 if local
     const referenceImages = referencedCharacters.map(c => c.imageUrl as string);
     try {
-      const imageUrl = await generateProImage(prompt, ImageSize.Size2K, AspectRatio.Landscape, referenceImages);
-      if (imageUrl) {
+      const base64Image = await generateProImage(prompt, ImageSize.Size2K, AspectRatio.Landscape, referenceImages);
+      if (base64Image) {
+        // Upload to Asset Store
+        const finalUrl = await assetStore.uploadBase64(base64Image, 'image');
+        
         setSegments(prev => prev.map(s => {
             if (s.id === id) {
                 const currentImages = s.imageUrls || (s.imageUrl ? [s.imageUrl] : []);
-                const newImages = [...currentImages, imageUrl];
+                const newImages = [...currentImages, finalUrl];
                 return { ...s, imageUrls: newImages, isGeneratingImage: false, previewIndex: newImages.length - 1 };
             }
             return s;
@@ -766,11 +783,14 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
       const file = e.target.files?.[0];
       if (file) {
           const reader = new FileReader();
-          reader.onloadend = () => {
-              const imageUrl = reader.result as string;
+          reader.onloadend = async () => {
+              const base64 = reader.result as string;
+              // Upload user content to Asset Store too
+              const finalUrl = await assetStore.uploadBase64(base64, 'image');
+              
               setSegments(prev => prev.map(s => {
                   if (s.id === segmentId) {
-                      const newImages = [...(s.imageUrls || []), imageUrl];
+                      const newImages = [...(s.imageUrls || []), finalUrl];
                       return { ...s, imageUrls: newImages, previewIndex: newImages.length - 1 };
                   }
                   return s;
@@ -808,7 +828,20 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
     try {
         const result = await generateSpeech(text, voiceName);
         if (result) {
-            setSegments(prev => prev.map(s => s.id === id ? { ...s, audioUrl: result.url, audioData: result.data, isGeneratingAudio: false, narratorId } : s));
+            // result.data is base64
+            const finalUrl = await assetStore.uploadBase64(result.data, 'audio');
+            
+            // If assetStore returns a cloud URL (http...), audioData stores the URL.
+            // If assetStore returns base64 (local mode), we need a blob URL for immediate playback.
+            const playbackUrl = finalUrl.startsWith('http') ? finalUrl : result.url; // result.url is Blob URL from service
+
+            setSegments(prev => prev.map(s => s.id === id ? { 
+                ...s, 
+                audioUrl: playbackUrl, 
+                audioData: finalUrl, // Persist either base64 or Cloud URL
+                isGeneratingAudio: false, 
+                narratorId 
+            } : s));
         } else { throw new Error("Failed to generate audio"); }
     } catch (err) {
         console.error(err); alert("Failed to generate narration.");
@@ -847,7 +880,18 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
       setSegments(prev => prev.map(s => s.id === id ? { ...s, isGeneratingVideo: true } : s));
       try {
           const result = await generateVideo(segment.suggestedPrompt, currentImage);
-          if (result) { setSegments(prev => prev.map(s => s.id === id ? { ...s, videoUrl: result.url, videoData: result.data, isGeneratingVideo: false } : s)); } 
+          if (result) { 
+              // Upload video to Asset Store
+              const finalUrl = await assetStore.uploadBase64(result.data, 'video');
+              const playbackUrl = finalUrl.startsWith('http') ? finalUrl : result.url;
+
+              setSegments(prev => prev.map(s => s.id === id ? { 
+                  ...s, 
+                  videoUrl: playbackUrl, 
+                  videoData: finalUrl, 
+                  isGeneratingVideo: false 
+              } : s)); 
+          } 
           else { throw new Error("Failed to generate video"); }
       } catch (err: any) {
           console.error(err);
@@ -863,7 +907,13 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
     if (file) {
       if (file.size > 10 * 1024 * 1024) { alert("File is too large. Please keep under 10MB."); return; }
       const reader = new FileReader();
-      reader.onloadend = () => { setBackgroundMusic(reader.result as string); setShowMusicModal(false); };
+      reader.onloadend = async () => { 
+          const base64 = reader.result as string;
+          // Store background music
+          const finalUrl = await assetStore.uploadBase64(base64, 'audio');
+          setBackgroundMusic(finalUrl); 
+          setShowMusicModal(false); 
+      };
       reader.readAsDataURL(file);
     }
   };
@@ -878,7 +928,12 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
         const resp = await fetch(url);
         const blob = await resp.blob();
         const reader = new FileReader();
-        reader.onloadend = () => { setBackgroundMusic(reader.result as string); setShowMusicModal(false); };
+        reader.onloadend = async () => { 
+            const base64 = reader.result as string;
+            const finalUrl = await assetStore.uploadBase64(base64, 'audio');
+            setBackgroundMusic(finalUrl); 
+            setShowMusicModal(false); 
+        };
         reader.readAsDataURL(blob);
     } catch (e) { console.error("Failed to load sample", e); setBackgroundMusic(url); setShowMusicModal(false); }
   };
@@ -1117,11 +1172,11 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
               <div className="flex-1 w-full relative group/img h-[300px] flex items-center justify-center bg-gray-100/50">
                   {segment.videoUrl ? (
                       <div className="relative w-full h-full bg-black group/vid">
-                         <video src={segment.videoUrl} controls className="w-full h-full object-contain" style={{ filter: segment.videoConfig?.filter || 'none' }} autoPlay loop muted />
+                         <video src={segment.videoUrl} controls className="w-full h-full object-contain" style={{ filter: segment.videoConfig?.filter || 'none' }} autoPlay loop muted crossOrigin="anonymous" />
                          <div className="absolute bottom-4 right-4 z-10 flex gap-2 opacity-0 group-hover/vid:opacity-100 transition-opacity"><Button size="sm" variant="secondary" onClick={() => setEditingVideoId(segment.id)} className="!py-1.5 !px-3 shadow-lg"><Scissors className="w-3 h-3" /> Edit</Button><button onClick={() => handleDeleteVideo(segment.id)} className="bg-red-500 text-white p-2 rounded-lg shadow-lg hover:bg-red-600 transition-colors"><Trash2 className="w-3 h-3" /></button></div>
                       </div>
                   ) : displayImage ? (
-                    <><img src={displayImage} alt="Visual" className="w-full h-full object-cover" />{images.length > 1 && (<div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 bg-black/50 backdrop-blur rounded-full opacity-0 group-hover/img:opacity-100 transition-opacity"><button onClick={(e) => { e.stopPropagation(); handlePrevImage(segment.id); }} className="text-white hover:text-brand-300"><ArrowLeft className="w-3 h-3" /></button><span className="text-[10px] font-bold text-white tabular-nums">{activeIndex + 1}/{images.length}</span><button onClick={(e) => { e.stopPropagation(); handleNextImage(segment.id); }} className="text-white hover:text-brand-300"><ArrowRight className="w-3 h-3" /></button></div>)}</>
+                    <><img src={displayImage} alt="Visual" className="w-full h-full object-cover" crossOrigin="anonymous" />{images.length > 1 && (<div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 bg-black/50 backdrop-blur rounded-full opacity-0 group-hover/img:opacity-100 transition-opacity"><button onClick={(e) => { e.stopPropagation(); handlePrevImage(segment.id); }} className="text-white hover:text-brand-300"><ArrowLeft className="w-3 h-3" /></button><span className="text-[10px] font-bold text-white tabular-nums">{activeIndex + 1}/{images.length}</span><button onClick={(e) => { e.stopPropagation(); handleNextImage(segment.id); }} className="text-white hover:text-brand-300"><ArrowRight className="w-3 h-3" /></button></div>)}</>
                   ) : (
                     <div className="text-gray-300 flex flex-col items-center gap-2"><ImageIcon className="w-12 h-12 opacity-30" /><span className="text-xs font-medium opacity-50">No image</span></div>
                   )}
@@ -1139,7 +1194,7 @@ export const StoryEditor: React.FC<StoryEditorProps> = ({ storyId, onNavigate })
                         <label className="cursor-pointer p-1.5 text-gray-400 hover:text-brand-600 transition-colors" title="Upload Image"><input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(segment.id, e)} /><Upload className="w-3.5 h-3.5" /></label>
                      </div>
                  </div>
-                 {images.length > 0 && !segment.videoUrl && (<div className="flex items-center justify-between"><div className="flex gap-1.5 overflow-x-auto scrollbar-hide max-w-full">{images.map((url, idx) => (<div key={idx} onClick={() => handleSelectImage(segment.id, idx)} className={`relative w-8 h-8 rounded-md overflow-hidden cursor-pointer border transition-all flex-shrink-0 ${activeIndex === idx ? 'border-brand-500 ring-1 ring-brand-200' : 'border-gray-200 opacity-60 hover:opacity-100'}`}><img src={url} className="w-full h-full object-cover" /></div>))}</div></div>)}
+                 {images.length > 0 && !segment.videoUrl && (<div className="flex items-center justify-between"><div className="flex gap-1.5 overflow-x-auto scrollbar-hide max-w-full">{images.map((url, idx) => (<div key={idx} onClick={() => handleSelectImage(segment.id, idx)} className={`relative w-8 h-8 rounded-md overflow-hidden cursor-pointer border transition-all flex-shrink-0 ${activeIndex === idx ? 'border-brand-500 ring-1 ring-brand-200' : 'border-gray-200 opacity-60 hover:opacity-100'}`}><img src={url} className="w-full h-full object-cover" crossOrigin="anonymous" /></div>))}</div></div>)}
               </div>
             </div>
 
