@@ -4,7 +4,8 @@ import { ImageSize, AspectRatio, Language, Character } from "../types";
 // Standard client for Text interactions using the injected environment key
 const standardAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// Helper to get a client for Paid services (Pro Image Gen, Veo)
+// Helper to get a client for Paid services (Veo)
+// Note: Image gen downgraded to Nano Banana (Flash), so it now uses standardAI mostly, but Veo still needs Pro client.
 export const getProClient = async (): Promise<GoogleGenAI> => {
   const win = window as any;
   if (win.aistudio) {
@@ -109,14 +110,16 @@ export const generateStorySegments = async (
   }
 };
 
+// Updated to use Nano Banana (gemini-2.5-flash-image)
 export const generateProImage = async (
   prompt: string,
-  size: ImageSize = ImageSize.Size1K,
+  size: ImageSize = ImageSize.Size1K, // Parameter kept for compatibility but ignored by Nano Banana
   aspectRatio: AspectRatio = AspectRatio.Square,
   referenceImages: string[] = []
 ): Promise<string | null> => {
   try {
-    const ai = await getProClient();
+    // Use standardAI for Nano Banana (Flash tier)
+    const ai = standardAI;
     
     const parts: any[] = [{ text: prompt }];
 
@@ -129,12 +132,12 @@ export const generateProImage = async (
     });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
+      model: 'gemini-2.5-flash-image', // Nano Banana
       contents: { parts },
       config: {
         imageConfig: {
           aspectRatio: aspectRatio,
-          imageSize: size,
+          // imageSize is NOT supported by Nano Banana
         },
       },
     });
@@ -146,7 +149,7 @@ export const generateProImage = async (
     }
     return null;
   } catch (e) {
-    console.error("Pro image generation failed", e);
+    console.error("Nano Banana image generation failed", e);
     throw e;
   }
 };
@@ -160,7 +163,7 @@ export const editImageWithFlash = async (
     const mimeType = base64Image.match(/^data:([^;]+);/)?.[1] || "image/png";
 
     const response = await standardAI.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-2.5-flash-image', // Nano Banana
       contents: {
         parts: [
           { inlineData: { data: base64Data, mimeType: mimeType } },

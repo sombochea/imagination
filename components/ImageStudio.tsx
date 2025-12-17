@@ -1,9 +1,8 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { generateProImage, editImageWithFlash } from '../services/gemini';
 import { ImageSize, AspectRatio } from '../types';
 import { Button } from './Button';
-import { Wand2, ImagePlus, Download, Eraser, Settings2, Sparkles, ChevronDown, Undo, Redo, RotateCcw, History } from 'lucide-react';
+import { Wand2, ImagePlus, Download, Eraser, Settings2, Sparkles, ChevronDown, Undo, Redo, RotateCcw, History, Zap } from 'lucide-react';
 
 type StudioTab = 'generate' | 'edit';
 
@@ -42,7 +41,7 @@ export const ImageStudio: React.FC = () => {
   // Generator State
   const [genResultImage, setGenResultImage] = useState<string | null>(null);
   const [genPrompt, setGenPrompt] = useState('');
-  const [size, setSize] = useState<ImageSize>(ImageSize.Size1K);
+  const [size, setSize] = useState<ImageSize>(ImageSize.Size1K); // Still in state but unused by Nano Banana
   const [aspect, setAspect] = useState<AspectRatio>(AspectRatio.Square);
 
   // Editor State
@@ -65,9 +64,7 @@ export const ImageStudio: React.FC = () => {
       const url = await generateProImage(genPrompt, size, aspect);
       setGenResultImage(url);
     } catch (e: any) {
-        alert(e.message?.includes("Requested entity was not found") 
-        ? "Please select a valid paid project API key to use the Pro model." 
-        : "Generation failed. Please try again.");
+        alert("Generation failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -141,7 +138,7 @@ export const ImageStudio: React.FC = () => {
               activeTab === 'generate' ? 'bg-indigo-50 text-indigo-600 border-b-2 border-indigo-600' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
             }`}
           >
-            <ImagePlus className="w-5 h-5" /> Generate (Pro)
+            <ImagePlus className="w-5 h-5" /> Generate
           </button>
           <button
             onClick={() => setActiveTab('edit')}
@@ -149,7 +146,7 @@ export const ImageStudio: React.FC = () => {
               activeTab === 'edit' ? 'bg-brand-50 text-brand-600 border-b-2 border-brand-600' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
             }`}
           >
-            <Wand2 className="w-5 h-5" /> Magic Edit (Flash)
+            <Wand2 className="w-5 h-5" /> Magic Edit
           </button>
         </div>
 
@@ -157,10 +154,10 @@ export const ImageStudio: React.FC = () => {
           {activeTab === 'generate' ? (
             <div className="space-y-6 animate-fade-in">
                <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mb-6 flex items-start gap-3">
-                <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><Sparkles className="w-5 h-5" /></div>
+                <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><Zap className="w-5 h-5" /></div>
                 <div>
-                    <h3 className="text-indigo-900 font-bold mb-1">Powered by Gemini 3.0 Pro</h3>
-                    <p className="text-indigo-700/80 text-sm">Capable of generating high-fidelity images up to 4K resolution. Requires a paid API key selection.</p>
+                    <h3 className="text-indigo-900 font-bold mb-1">Powered by Nano Banana</h3>
+                    <p className="text-indigo-700/80 text-sm">Efficient image generation optimized for speed and creativity.</p>
                 </div>
                </div>
 
@@ -176,31 +173,17 @@ export const ImageStudio: React.FC = () => {
                     />
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Resolution</label>
-                        <StyledSelect 
-                            value={size} 
-                            onChange={(e: any) => setSize(e.target.value as ImageSize)}
-                            options={[
-                                { value: ImageSize.Size1K, label: '1K (Standard)' },
-                                { value: ImageSize.Size2K, label: '2K (High Quality)' },
-                                { value: ImageSize.Size4K, label: '4K (Ultra HD)' },
-                            ]}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Aspect Ratio</label>
-                        <StyledSelect 
-                            value={aspect} 
-                            onChange={(e: any) => setAspect(e.target.value as AspectRatio)}
-                            options={[
-                                { value: AspectRatio.Square, label: 'Square (1:1)' },
-                                { value: AspectRatio.Landscape, label: 'Landscape (16:9)' },
-                                { value: AspectRatio.Portrait, label: 'Portrait (9:16)' },
-                            ]}
-                        />
-                    </div>
+                  <div>
+                      <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Aspect Ratio</label>
+                      <StyledSelect 
+                          value={aspect} 
+                          onChange={(e: any) => setAspect(e.target.value as AspectRatio)}
+                          options={[
+                              { value: AspectRatio.Square, label: 'Square (1:1)' },
+                              { value: AspectRatio.Landscape, label: 'Landscape (16:9)' },
+                              { value: AspectRatio.Portrait, label: 'Portrait (9:16)' },
+                          ]}
+                      />
                   </div>
 
                   <Button 
@@ -236,7 +219,7 @@ export const ImageStudio: React.FC = () => {
                 <div className="bg-brand-50 p-4 rounded-xl border border-brand-100 mb-6 flex items-start gap-3">
                  <div className="bg-brand-100 p-2 rounded-lg text-brand-600"><Wand2 className="w-5 h-5" /></div>
                  <div>
-                    <h3 className="text-brand-900 font-bold mb-1">Powered by Gemini 2.5 Flash</h3>
+                    <h3 className="text-brand-900 font-bold mb-1">Powered by Nano Banana</h3>
                     <p className="text-brand-800/80 text-sm">Describe how you want to change the image. E.g., "Add a rainbow in the sky" or "Turn the cat into a dog".</p>
                  </div>
                </div>
@@ -304,7 +287,7 @@ export const ImageStudio: React.FC = () => {
                  </div>
                  
                  {/* Result / Preview Area - Always shows the latest current state for clarity in editing flow */}
-                 <div className="aspect-square bg-gray-900 rounded-3xl flex items-center justify-center relative overflow-hidden shadow-inner">
+                 <div className="aspect-square bg-gray-100 rounded-3xl flex items-center justify-center relative overflow-hidden shadow-inner">
                     {currentEditImage ? (
                         <div className="relative w-full h-full">
                              <img src={currentEditImage} alt="Current State" className="w-full h-full object-contain p-4" />
@@ -316,7 +299,7 @@ export const ImageStudio: React.FC = () => {
                              </div>
                         </div>
                     ) : (
-                        <div className="text-gray-300 text-center">
+                        <div className="text-gray-900 text-center">
                             <Sparkles className="w-16 h-16 mx-auto mb-3 opacity-20" />
                             <p className="opacity-50 font-medium">Edited image will appear here</p>
                         </div>
